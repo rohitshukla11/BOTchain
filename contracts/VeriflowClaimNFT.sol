@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// Contract name retained as VeriflowClaimNFT for deployment continuity — product is branded as CredFi.
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
