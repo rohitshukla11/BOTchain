@@ -1,0 +1,265 @@
+/* CredFi app shell — shared layout, tabs, cards, form inputs */
+
+/* ─── Layout ────────────────────────────────────────────────── */
+.vf-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.vf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  height: 64px;
+  border-bottom: 1px solid var(--border);
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.vf-logo {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.5px;
+}
+
+.vf-logo span {
+  color: var(--accent);
+}
+
+/* ─── Tabs ───────────────────────────────────────────────────── */
+.vf-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vf-tab {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.vf-tab:hover {
+  color: var(--text-h);
+}
+
+.vf-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ─── Page body ──────────────────────────────────────────────── */
+.vf-page {
+  flex: 1;
+  padding: 2rem;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.vf-page h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.vf-page p.sub {
+  margin: -1rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+/* ─── Card ───────────────────────────────────────────────────── */
+.vf-card {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.vf-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* ─── Form fields ────────────────────────────────────────────── */
+.vf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.vf-field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vf-input,
+.vf-select {
+  padding: 0.6rem 0.875rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--text-h);
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: var(--mono);
+}
+
+.vf-input:focus,
+.vf-select:focus {
+  border-color: var(--accent);
+}
+
+.vf-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.vf-btn {
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.vf-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vf-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.vf-btn-primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.vf-btn-secondary {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.vf-btn-secondary:hover:not(:disabled) {
+  background: var(--accent-border);
+}
+
+/* ─── Info / stats row ───────────────────────────────────────── */
+.vf-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.vf-stat {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.vf-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.vf-stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-h);
+  font-family: var(--mono);
+}
+
+/* ─── Status badge ───────────────────────────────────────────── */
+.vf-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.vf-badge-green  { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+.vf-badge-yellow { background: rgba(251, 191, 36, 0.15);  color: #fbbf24; }
+.vf-badge-red    { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+.vf-badge-purple { background: var(--accent-bg); color: var(--accent); }
+
+/* ─── Alert / feedback ───────────────────────────────────────── */
+.vf-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.vf-alert-error   { background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+.vf-alert-success { background: rgba(52,211,153,0.12);  color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
+.vf-alert-info    { background: var(--accent-bg);       color: var(--accent); border: 1px solid var(--accent-border); }
+
+/* ─── Connect wall ───────────────────────────────────────────── */
+.vf-connect-wall {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem 2rem;
+  color: var(--text);
+  text-align: center;
+}
+
+.vf-connect-wall p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* ─── Tx hash link ───────────────────────────────────────────── */
+.vf-txlink {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  word-break: break-all;
+  text-decoration: none;
+}
+.vf-txlink:hover { text-decoration: underline; }
