@@ -5,6 +5,8 @@ import { ConnectWallet } from './components/ConnectWallet.tsx';
 import ListClaim from './pages/ListClaim.tsx';
 import BrowseFund from './pages/BrowseFund.tsx';
 import MyClaims from './pages/MyClaims.tsx';
+import MyPositions from './pages/MyPositions.tsx';
+import ArbitratorPanel from './pages/ArbitratorPanel.tsx';
 import AdminPanel from './pages/AdminPanel.tsx';
 import { CONTRACTS } from './config/contracts.ts';
 import VeriflowClaimNFTABI from './config/abis/VeriflowClaimNFT.json';
@@ -87,8 +89,8 @@ export default function App() {
       {activeTab === 'list'      && <ListClaim />}
       {activeTab === 'browse'    && <BrowseFund />}
       {activeTab === 'myclaims'  && <MyClaims />}
-      {activeTab === 'positions' && <Placeholder title="My Positions" />}
-      {activeTab === 'arb'       && <Placeholder title="Arbitrator Panel" />}
+      {activeTab === 'positions' && <MyPositions />}
+      {activeTab === 'arb'       && <ArbitratorPanel />}
       {activeTab === ('admin' as TabId) && <AdminPanel />}
     </div>
   );

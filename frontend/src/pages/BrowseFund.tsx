@@ -35,6 +35,116 @@ interface ClaimInfo {
   requiredCollateral: bigint;
 }
 
+interface ClaimData {
+  claimType: number;
+  amount: bigint;
+  dueDate: bigint;
+  originator: string;
+}
+
+interface CollateralData {
+  amount: bigint;
+  locked: boolean;
+}
+
+interface FundingData {
+  funded: boolean;
+}
+
+interface DecodeIssue {
+  source: 'claims' | 'collateral' | 'funding';
+  claimId: number;
+  message: string;
+  raw: unknown;
+}
+
+function hasKey<T extends string>(obj: unknown, key: T): obj is Record<T, unknown> {
+  return !!obj && typeof obj === 'object' && key in obj;
+}
+
+function asBigInt(value: unknown, field: string): bigint {
+  try {
+    return BigInt(value as bigint | number | string);
+  } catch {
+    throw new Error(`Invalid bigint field: ${field}`);
+  }
+}
+
+function asBoolean(value: unknown, field: string): boolean {
+  if (typeof value === 'boolean') return value;
+  throw new Error(`Invalid boolean field: ${field}`);
+}
+
+function asAddress(value: unknown, field: string): string {
+  if (typeof value === 'string' && value.startsWith('0x')) return value;
+  throw new Error(`Invalid address field: ${field}`);
+}
+
+function normalizeClaimData(raw: unknown): ClaimData {
+  if (!raw) throw new Error('Missing claims() result');
+  if (Array.isArray(raw)) {
+    if (raw.length < 5) throw new Error('claims() tuple length mismatch');
+    return {
+      claimType: Number(raw[0]),
+      amount: asBigInt(raw[1], 'claims.amount'),
+      dueDate: asBigInt(raw[2], 'claims.dueDate'),
+      originator: asAddress(raw[4], 'claims.originator'),
+    };
+  }
+
+  if (!hasKey(raw, 'claimType') || !hasKey(raw, 'amount') || !hasKey(raw, 'dueDate') || !hasKey(raw, 'originator')) {
+    throw new Error('Unrecognized claims() return shape');
+  }
+
+  const claim = raw as Record<string, unknown>;
+  return {
+    claimType: Number(claim.claimType),
+    amount: asBigInt(claim.amount, 'claims.amount'),
+    dueDate: asBigInt(claim.dueDate, 'claims.dueDate'),
+    originator: asAddress(claim.originator, 'claims.originator'),
+  };
+}
+
+function normalizeCollateralData(raw: unknown): CollateralData {
+  if (!raw) throw new Error('Missing collateral() result');
+  if (Array.isArray(raw)) {
+    if (raw.length < 2) throw new Error('collateral() tuple length mismatch');
+    return {
+      amount: asBigInt(raw[0], 'collateral.amount'),
+      locked: asBoolean(raw[1], 'collateral.locked'),
+    };
+  }
+
+  if (!hasKey(raw, 'amount') || !hasKey(raw, 'locked')) {
+    throw new Error('Unrecognized collateral() return shape');
+  }
+
+  const collateral = raw as Record<string, unknown>;
+  return {
+    amount: asBigInt(collateral.amount, 'collateral.amount'),
+    locked: asBoolean(collateral.locked, 'collateral.locked'),
+  };
+}
+
+function normalizeFundingData(raw: unknown): FundingData {
+  if (!raw) throw new Error('Missing funding() result');
+  if (Array.isArray(raw)) {
+    if (raw.length < 3) throw new Error('funding() tuple length mismatch');
+    return {
+      funded: asBoolean(raw[2], 'funding.funded'),
+    };
+  }
+
+  if (!hasKey(raw, 'funded')) {
+    throw new Error('Unrecognized funding() return shape');
+  }
+
+  const funding = raw as Record<string, unknown>;
+  return {
+    funded: asBoolean(funding.funded, 'funding.funded'),
+  };
+}
+
 // ── ClaimCard ──────────────────────────────────────────────────────────────
 
 function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: string }) {
@@ -258,6 +368,7 @@ export default function BrowseFund() {
   }, []);
 
   const { address, isConnected } = useAccount();
+  const [decodeError, setDecodeError] = useState<DecodeIssue | null>(null);
 
   // 1. Total minted claims
   const { data: totalRaw, isLoading: loadingTotal } = useReadContract({
@@ -296,36 +407,108 @@ export default function BrowseFund() {
   const { data: collateralData,isLoading: loadingCollateral } = useReadContracts({ contracts: collateralContracts, query: { enabled: total > 0n } });
   const { data: fundingData,   isLoading: loadingFunding }    = useReadContracts({ contracts: fundingContracts,   query: { enabled: total > 0n } });
 
-  // 3. For each open claim, fetch required collateral from oracle
-  const openClaimIds = useMemo(() => {
-    if (!claimsData || !collateralData || !fundingData) return [];
-    return Array.from({ length: Number(total) }, (_, i) => i).filter(i => {
-      const col = collateralData[i]?.result as { locked: boolean } | undefined;
-      const fund = fundingData[i]?.result as { funded: boolean } | undefined;
-      const claim = claimsData[i]?.result as { originator: string } | undefined;
-      return col?.locked === true && fund?.funded === false && !!claim?.originator && claim.originator !== '0x0000000000000000000000000000000000000000';
-    });
+  const parsedOpenState = useMemo(() => {
+    const claimsById = new Map<number, ClaimData>();
+    const collateralById = new Map<number, CollateralData>();
+    const openClaimIds: number[] = [];
+    let issue: DecodeIssue | null = null;
+
+    if (!claimsData || !collateralData || !fundingData) {
+      return { openClaimIds, claimsById, collateralById, decodeIssue: issue };
+    }
+
+    for (let i = 0; i < Number(total); i++) {
+      let claim: ClaimData;
+      let collateral: CollateralData;
+      let funding: FundingData;
+
+      try {
+        claim = normalizeClaimData(claimsData[i]?.result);
+      } catch (error: unknown) {
+        issue ??= {
+          source: 'claims',
+          claimId: i,
+          message: error instanceof Error ? error.message : String(error),
+          raw: claimsData[i]?.result,
+        };
+        continue;
+      }
+
+      try {
+        collateral = normalizeCollateralData(collateralData[i]?.result);
+      } catch (error: unknown) {
+        issue ??= {
+          source: 'collateral',
+          claimId: i,
+          message: error instanceof Error ? error.message : String(error),
+          raw: collateralData[i]?.result,
+        };
+        continue;
+      }
+
+      try {
+        funding = normalizeFundingData(fundingData[i]?.result);
+      } catch (error: unknown) {
+        issue ??= {
+          source: 'funding',
+          claimId: i,
+          message: error instanceof Error ? error.message : String(error),
+          raw: fundingData[i]?.result,
+        };
+        continue;
+      }
+
+      claimsById.set(i, claim);
+      collateralById.set(i, collateral);
+
+      if (
+        collateral.locked === true &&
+        funding.funded === false &&
+        claim.originator !== '0x0000000000000000000000000000000000000000'
+      ) {
+        openClaimIds.push(i);
+      }
+    }
+
+    return { openClaimIds, claimsById, collateralById, decodeIssue: issue };
   }, [claimsData, collateralData, fundingData, total]);
+
+  const openClaimIds = parsedOpenState.openClaimIds;
+
+  useEffect(() => {
+    setDecodeError(parsedOpenState.decodeIssue);
+  }, [parsedOpenState.decodeIssue]);
+
+  useEffect(() => {
+    if (!decodeError) return;
+
+    console.warn('[BrowseFund] decode warning', {
+      source: decodeError.source,
+      claimId: decodeError.claimId,
+      message: decodeError.message,
+      raw: decodeError.raw,
+    });
+  }, [decodeError]);
 
   const oracleContracts = useMemo(() =>
     openClaimIds.map(i => {
-      const c = claimsData?.[i]?.result as { claimType: number; amount: bigint } | undefined;
+      const c = parsedOpenState.claimsById.get(i);
       return {
         address: ORACLE_ADDR,
         abi: RiskOracleABI as any,
         functionName: 'getRequiredCollateral',
         args: [c?.claimType ?? 0, c?.amount ?? 0n],
       };
-    }), [openClaimIds, claimsData]);
+    }), [openClaimIds, parsedOpenState.claimsById]);
 
   const { data: oracleData } = useReadContracts({ contracts: oracleContracts, query: { enabled: openClaimIds.length > 0 } });
 
   // 4. Build final list of fundable claims
   const fundableClaims = useMemo((): ClaimInfo[] => {
-    if (!claimsData || !collateralData || !oracleData) return [];
+    if (!oracleData) return [];
     return openClaimIds.map((i, idx) => {
-      const c  = claimsData[i]?.result  as { claimType: number; amount: bigint; dueDate: bigint; originator: string } | undefined;
-      const col = collateralData[i]?.result as { amount: bigint } | undefined;
+      const c = parsedOpenState.claimsById.get(i);
+      const col = parsedOpenState.collateralById.get(i);
       const req  = oracleData[idx]?.result as bigint | undefined ?? 0n;
       const max  = (c?.amount ?? 0n) > req ? (c?.amount ?? 0n) - req : 0n;
       return {
@@ -339,7 +522,7 @@ export default function BrowseFund() {
         requiredCollateral: req,
       };
     });
-  }, [openClaimIds, claimsData, collateralData, oracleData]);
+  }, [openClaimIds, oracleData, parsedOpenState.claimsById, parsedOpenState.collateralById]);
 
   const isLoading = loadingTotal || loadingClaims || loadingCollateral || loadingFunding;
 
@@ -360,6 +543,12 @@ export default function BrowseFund() {
 
       {isLoading && (
         <div className="vf-alert vf-alert-info">Loading claims from chain…</div>
+      )}
+
+      {decodeError && (
+        <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
+          Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+        </div>
       )}
 
       {!isLoading && total === 0n && (

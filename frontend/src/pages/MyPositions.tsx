@@ -10,11 +10,9 @@ import { formatUnits } from 'viem';
 import { CONTRACTS } from '../config/contracts.ts';
 import VeriflowClaimNFTABI from '../config/abis/VeriflowClaimNFT.json';
 import VeriflowClaimVaultABI from '../config/abis/VeriflowClaimVault.json';
-import MockStablecoinABI from '../config/abis/MockStablecoin.json';
 
 const NFT_ADDR = CONTRACTS.VeriflowClaimNFT as `0x${string}`;
 const VAULT_ADDR = CONTRACTS.VeriflowClaimVault as `0x${string}`;
-const TOKEN_ADDR = CONTRACTS.MockStablecoin as `0x${string}`;
 
 const CLAIM_TYPE_LABELS = ['Invoice', 'Royalty', 'Rental'] as const;
 
@@ -52,13 +50,13 @@ interface FundingData {
   disputeEvidenceHash: `0x${string}`;
 }
 
-interface MyClaimRow {
+interface PositionRow {
   id: bigint;
   claim: ClaimData;
   collateral: CollateralData;
   funding: FundingData;
   status: ClaimStatus;
-  requiredRepayment: bigint;
+  expectedRepayment: bigint;
   yieldAmount: bigint;
   challengeEndsAt: bigint;
 }
@@ -70,8 +68,8 @@ interface DecodeIssue {
   raw: unknown;
 }
 
-interface ParsedClaimsResult {
-  rows: MyClaimRow[];
+interface ParsedPositionsResult {
+  rows: PositionRow[];
   decodeIssue: DecodeIssue | null;
 }
 
@@ -200,14 +198,6 @@ function normalizeFundingData(raw: unknown): FundingData {
   };
 }
 
-function formatCountdown(secondsLeft: number): string {
-  if (secondsLeft <= 0) return '00:00:00';
-  const hours = Math.floor(secondsLeft / 3600);
-  const minutes = Math.floor((secondsLeft % 3600) / 60);
-  const seconds = secondsLeft % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
 function toBytes32(input: string): `0x${string}` {
   const trimmed = input.trim();
   if (/^0x[0-9a-fA-F]{64}$/.test(trimmed)) {
@@ -220,6 +210,14 @@ function toBytes32(input: string): `0x${string}` {
   return (`0x${hex.padEnd(64, '0')}`) as `0x${string}`;
 }
 
+function formatCountdown(secondsLeft: number): string {
+  if (secondsLeft <= 0) return '00:00:00';
+  const hours = Math.floor(secondsLeft / 3600);
+  const minutes = Math.floor((secondsLeft % 3600) / 60);
+  const seconds = secondsLeft % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function statusBadgeClass(status: ClaimStatus): string {
   if (status === 'Awaiting Collateral') return 'vf-badge-yellow';
   if (status === 'Open for Funding') return 'vf-badge-green';
@@ -229,29 +227,13 @@ function statusBadgeClass(status: ClaimStatus): string {
   return 'vf-badge-green';
 }
 
-function ClaimCard({
-  row,
-  challengeWindow,
-  userBalance,
-}: {
-  row: MyClaimRow;
-  challengeWindow: bigint;
-  userBalance: bigint;
-}) {
+function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWindow: bigint }) {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
-  const [evidenceInput, setEvidenceInput] = useState('');
+  const [disputeInput, setDisputeInput] = useState('');
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
-  const [actionState, setActionState] = useState<
-    'idle' |
-    'submitting-evidence' |
-    'approving' |
-    'depositing' |
-    'finalizing-distribution' |
-    'finalizing-release' |
-    'done'
-  >('idle');
+  const [actionState, setActionState] = useState<'idle' | 'raising-dispute' | 'done'>('idle');
   const [error, setError] = useState('');
   const [nowSec, setNowSec] = useState<number>(Math.floor(Date.now() / 1000));
 
@@ -263,117 +245,35 @@ function ClaimCard({
   const dueDateText = new Date(Number(row.claim.dueDate) * 1000).toLocaleDateString();
   const challengeEndSec = Number(row.challengeEndsAt);
   const countdownSec = Math.max(0, challengeEndSec - nowSec);
+  const challengeWindowActive = countdownSec > 0;
 
-  const canSubmitEvidence = row.status === 'Funded - Repayment Due';
-  const canDepositRepayment =
+  const canRaiseDispute =
     row.status === 'Evidence Submitted - Challenge Window Open' &&
-    row.funding.evidenced &&
-    !row.funding.repaymentDeposited;
-
-  const challengeWindowElapsed = countdownSec === 0;
-  const canFinalizeSettlement =
-    row.funding.repaymentDeposited &&
+    challengeWindowActive &&
     row.funding.funded &&
-    row.collateral.locked &&
+    !row.funding.repaymentDeposited &&
     !row.funding.disputed;
 
-  const insufficientBalance = userBalance < row.requiredRepayment;
-
-  async function handleSubmitEvidence() {
+  async function handleRaiseDispute() {
     setError('');
     setTxHash(null);
 
-    if (!evidenceInput.trim()) {
-      setError('Please enter an evidence hash or note.');
+    if (!disputeInput.trim()) {
+      setError('Please enter dispute evidence hash or note.');
       return;
     }
 
     try {
-      setActionState('submitting-evidence');
-      const evidenceHash = toBytes32(evidenceInput);
+      setActionState('raising-dispute');
+      const disputeHash = toBytes32(disputeInput);
       const hash = await writeContractAsync({
         address: VAULT_ADDR,
         abi: VeriflowClaimVaultABI,
-        functionName: 'submitRepaymentEvidence',
-        args: [row.id, evidenceHash],
+        functionName: 'raiseDispute',
+        args: [row.id, disputeHash],
       });
-
       setTxHash(hash);
       await publicClient!.waitForTransactionReceipt({ hash });
-      setActionState('done');
-    } catch (e: unknown) {
-      setActionState('idle');
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function handleApproveAndDeposit() {
-    setError('');
-    setTxHash(null);
-
-    if (insufficientBalance) {
-      setError('Insufficient mUSD balance for required repayment amount.');
-      return;
-    }
-
-    try {
-      setActionState('approving');
-      const approveHash = await writeContractAsync({
-        address: TOKEN_ADDR,
-        abi: MockStablecoinABI,
-        functionName: 'approve',
-        args: [VAULT_ADDR, row.requiredRepayment],
-      });
-      setTxHash(approveHash);
-      await publicClient!.waitForTransactionReceipt({ hash: approveHash });
-
-      setActionState('depositing');
-      const depositHash = await writeContractAsync({
-        address: VAULT_ADDR,
-        abi: VeriflowClaimVaultABI,
-        functionName: 'depositRepayment',
-        args: [row.id, row.requiredRepayment],
-      });
-      setTxHash(depositHash);
-      await publicClient!.waitForTransactionReceipt({ hash: depositHash });
-
-      setActionState('done');
-    } catch (e: unknown) {
-      setActionState('idle');
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function handleFinalizeSettlement() {
-    setError('');
-    setTxHash(null);
-
-    if (!challengeWindowElapsed) {
-      setError('Challenge window is still active. Wait for the countdown to reach zero before finalizing.');
-      return;
-    }
-
-    try {
-      setActionState('finalizing-distribution');
-      const distributeHash = await writeContractAsync({
-        address: VAULT_ADDR,
-        abi: VeriflowClaimVaultABI,
-        functionName: 'distributeToInvestors',
-        args: [row.id],
-      });
-      setTxHash(distributeHash);
-      await publicClient!.waitForTransactionReceipt({ hash: distributeHash });
-
-      setActionState('finalizing-release');
-      const releaseHash = await writeContractAsync({
-        address: NFT_ADDR,
-        abi: VeriflowClaimNFTABI,
-        functionName: 'releaseCollateral',
-        args: [row.id],
-      });
-      setTxHash(releaseHash);
-      await publicClient!.waitForTransactionReceipt({ hash: releaseHash });
-
       setActionState('done');
     } catch (e: unknown) {
       setActionState('idle');
@@ -394,109 +294,56 @@ function ClaimCard({
 
       <div className="vf-stats">
         <div className="vf-stat">
-          <span className="vf-stat-label">Claim Amount</span>
-          <span className="vf-stat-value">{formatUnits(row.claim.amount, 18)} mUSD</span>
+          <span className="vf-stat-label">Funded Amount</span>
+          <span className="vf-stat-value">{formatUnits(row.funding.fundedAmount, 18)} mUSD</span>
         </div>
         <div className="vf-stat">
-          <span className="vf-stat-label">Collateral</span>
-          <span className="vf-stat-value">{row.collateral.locked ? `${formatUnits(row.collateral.amount, 18)} mUSD` : 'Not locked'}</span>
+          <span className="vf-stat-label">Expected Repayment</span>
+          <span className="vf-stat-value">{formatUnits(row.expectedRepayment, 18)} mUSD</span>
         </div>
         <div className="vf-stat">
-          <span className="vf-stat-label">Funded Principal</span>
-          <span className="vf-stat-value">{row.funding.funded ? `${formatUnits(row.funding.fundedAmount, 18)} mUSD` : 'Not funded'}</span>
+          <span className="vf-stat-label">Principal + Yield</span>
+          <span className="vf-stat-value">{formatUnits(row.funding.fundedAmount, 18)} + {formatUnits(row.yieldAmount, 18)} mUSD</span>
         </div>
         <div className="vf-stat">
-          <span className="vf-stat-label">Repayment Required</span>
-          <span className="vf-stat-value">{row.funding.funded ? `${formatUnits(row.requiredRepayment, 18)} mUSD` : '-'}</span>
+          <span className="vf-stat-label">Originator</span>
+          <span className="vf-stat-value" style={{ fontFamily: 'var(--mono)', fontSize: '0.75rem' }}>{row.claim.originator.slice(0, 10)}…{row.claim.originator.slice(-6)}</span>
         </div>
       </div>
 
-      {row.status === 'Evidence Submitted - Challenge Window Open' && (
+      {row.funding.evidenced && (
         <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-          Challenge window length: {Number(challengeWindow)}s. {countdownSec > 0
+          Challenge window length: {Number(challengeWindow)}s. {challengeWindowActive
             ? `Time remaining: ${formatCountdown(countdownSec)}`
-            : 'Challenge window time has elapsed; settlement can proceed if undisputed.'}
+            : 'Challenge window elapsed.'}
         </div>
       )}
 
-      {canSubmitEvidence && (
+      {canRaiseDispute && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
           <div className="vf-field" style={{ marginTop: 0 }}>
-            <label>Repayment Evidence Hash / Note</label>
+            <label>Dispute Evidence Hash / Note</label>
             <input
               className="vf-input"
               placeholder="0x... (bytes32) or plain-text note"
-              value={evidenceInput}
-              onChange={(e) => setEvidenceInput(e.target.value)}
+              value={disputeInput}
+              onChange={(e) => setDisputeInput(e.target.value)}
               disabled={actionState !== 'idle'}
             />
           </div>
           <button
             className="vf-btn vf-btn-primary"
-            onClick={handleSubmitEvidence}
-            disabled={!evidenceInput.trim() || actionState !== 'idle'}
+            onClick={handleRaiseDispute}
+            disabled={!disputeInput.trim() || actionState !== 'idle'}
           >
-            {actionState === 'submitting-evidence' ? 'Submitting evidence...' : 'Submit Repayment Evidence'}
+            {actionState === 'raising-dispute' ? 'Raising dispute...' : 'Raise Dispute'}
           </button>
-        </div>
-      )}
-
-      {canDepositRepayment && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-            You must repay {formatUnits(row.requiredRepayment, 18)} mUSD ({formatUnits(row.funding.fundedAmount, 18)} mUSD principal + {formatUnits(row.yieldAmount, 18)} mUSD yield).
-          </div>
-          {insufficientBalance && (
-            <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem' }}>
-              Insufficient mUSD balance. You have {formatUnits(userBalance, 18)} mUSD but need {formatUnits(row.requiredRepayment, 18)} mUSD.
-            </div>
-          )}
-          <button
-            className="vf-btn vf-btn-primary"
-            onClick={handleApproveAndDeposit}
-            disabled={insufficientBalance || actionState !== 'idle'}
-          >
-            {actionState === 'approving'
-              ? 'Approving mUSD...'
-              : actionState === 'depositing'
-                ? 'Depositing repayment...'
-                : 'Approve mUSD & Deposit Repayment'}
-          </button>
-        </div>
-      )}
-
-      {row.funding.repaymentDeposited && row.status !== 'Repaid & Closed' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-            Repayment has been deposited on-chain. Awaiting distribution and collateral release.
-          </div>
-
-          {canFinalizeSettlement && (
-            <>
-              {!challengeWindowElapsed && (
-                <div className="vf-alert vf-alert-info" style={{ fontSize: '0.8rem' }}>
-                  Finalization unlocks after challenge window expiry. Time remaining: {formatCountdown(countdownSec)}
-                </div>
-              )}
-              <button
-                className="vf-btn vf-btn-primary"
-                onClick={handleFinalizeSettlement}
-                disabled={!challengeWindowElapsed || actionState !== 'idle'}
-              >
-                {actionState === 'finalizing-distribution'
-                  ? 'Finalizing: Distributing to investor...'
-                  : actionState === 'finalizing-release'
-                    ? 'Finalizing: Releasing collateral...'
-                    : 'Finalize Settlement'}
-              </button>
-            </>
-          )}
         </div>
       )}
 
       {row.status === 'Repaid & Closed' && (
         <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-          This claim is fully settled: repayment distributed and collateral released.
+          This position is settled and closed.
         </div>
       )}
 
@@ -518,10 +365,10 @@ function ClaimCard({
   );
 }
 
-export default function MyClaims() {
+export default function MyPositions() {
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'CredFi | My Claims';
+    document.title = 'CredFi | My Positions';
 
     let meta = document.querySelector('meta[name="description"]');
     const createdMeta = !meta;
@@ -533,7 +380,7 @@ export default function MyClaims() {
       document.head.appendChild(meta);
     }
 
-    meta.setAttribute('content', 'CredFi originator dashboard for claim status, repayment evidence, and repayment deposits.');
+    meta.setAttribute('content', 'CredFi investor dashboard for funded positions, expected repayments, challenge windows, and disputes.');
 
     return () => {
       document.title = previousTitle;
@@ -546,7 +393,6 @@ export default function MyClaims() {
   }, []);
 
   const { address, isConnected } = useAccount();
-
   const [decodeError, setDecodeError] = useState<DecodeIssue | null>(null);
 
   const { data: totalRaw, isLoading: loadingTotal } = useReadContract({
@@ -561,17 +407,8 @@ export default function MyClaims() {
     functionName: 'challengeWindow',
   });
 
-  const { data: userBalanceRaw } = useReadContract({
-    address: TOKEN_ADDR,
-    abi: MockStablecoinABI,
-    functionName: 'balanceOf',
-    args: [address as `0x${string}`],
-    query: { enabled: !!address },
-  });
-
   const totalClaims = totalRaw as bigint ?? 0n;
   const challengeWindow = challengeWindowRaw as bigint ?? 0n;
-  const userBalance = userBalanceRaw as bigint ?? 0n;
 
   const claimContracts = useMemo(() =>
     Array.from({ length: Number(totalClaims) }, (_, i) => ({
@@ -612,13 +449,13 @@ export default function MyClaims() {
     query: { enabled: totalClaims > 0n },
   });
 
-  const parsedClaims = useMemo((): ParsedClaimsResult => {
+  const parsedPositions = useMemo((): ParsedPositionsResult => {
     if (!address || !claimsData || !collateralData || !fundingData) {
       return { rows: [], decodeIssue: null };
     }
 
     const caller = address.toLowerCase();
-    const rows: MyClaimRow[] = [];
+    const rows: PositionRow[] = [];
     let decodeIssue: DecodeIssue | null = null;
 
     for (let i = 0; i < Number(totalClaims); i++) {
@@ -662,15 +499,13 @@ export default function MyClaims() {
         continue;
       }
 
-      if (!claim.originator || claim.originator.toLowerCase() !== caller) continue;
+      if (!funding.investor || funding.investor.toLowerCase() !== caller) continue;
 
-      const principal = funding.fundedAmount ?? 0n;
-      const yieldAmount = principal * 1000n / 10_000n;
-      const requiredRepayment = principal + yieldAmount;
-      const challengeEndsAt = (funding.fundedAt ?? 0n) + challengeWindow;
+      const yieldAmount = funding.fundedAmount * 1000n / 10_000n;
+      const expectedRepayment = funding.fundedAmount + yieldAmount;
+      const challengeEndsAt = funding.fundedAt + challengeWindow;
 
       let status: ClaimStatus;
-
       if (funding.disputed) {
         status = 'Disputed';
       } else if (!collateral.locked && !funding.funded && funding.repaymentDeposited) {
@@ -693,7 +528,7 @@ export default function MyClaims() {
         collateral,
         funding,
         status,
-        requiredRepayment,
+        expectedRepayment,
         yieldAmount,
         challengeEndsAt,
       });
@@ -702,16 +537,16 @@ export default function MyClaims() {
     return { rows: rows.reverse(), decodeIssue };
   }, [address, claimsData, collateralData, fundingData, totalClaims, challengeWindow]);
 
-  const myClaims = parsedClaims.rows;
+  const positions = parsedPositions.rows;
 
   useEffect(() => {
-    setDecodeError(parsedClaims.decodeIssue);
-  }, [parsedClaims.decodeIssue]);
+    setDecodeError(parsedPositions.decodeIssue);
+  }, [parsedPositions.decodeIssue]);
 
   useEffect(() => {
     if (!decodeError) return;
 
-    console.warn('[MyClaims] decode warning', {
+    console.warn('[MyPositions] decode warning', {
       source: decodeError.source,
       claimId: decodeError.claimId,
       message: decodeError.message,
@@ -724,18 +559,18 @@ export default function MyClaims() {
   if (!isConnected) {
     return (
       <div className="vf-connect-wall">
-        <p>Connect your wallet to view your claims.</p>
+        <p>Connect your wallet to view your investor positions.</p>
       </div>
     );
   }
 
   return (
     <div className="vf-page">
-      <h2>My Claims</h2>
-      <p className="sub">Track each minted claim through collateral, funding, evidence, disputes, and final settlement.</p>
+      <h2>My Positions</h2>
+      <p className="sub">Track funded claims, expected repayment, settlement progress, and disputes from the investor side.</p>
 
       {isLoading && (
-        <div className="vf-alert vf-alert-info">Loading your claims from chain...</div>
+        <div className="vf-alert vf-alert-info">Loading investor positions from chain...</div>
       )}
 
       {decodeError && (
@@ -744,21 +579,16 @@ export default function MyClaims() {
         </div>
       )}
 
-      {!isLoading && myClaims.length === 0 && (
+      {!isLoading && positions.length === 0 && (
         <div className="vf-card">
           <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
-            You have not minted any claims yet. Start from <strong>List a Claim</strong>.
+            You do not have any funded positions yet.
           </p>
         </div>
       )}
 
-      {myClaims.map((row) => (
-        <ClaimCard
-          key={row.id.toString()}
-          row={row}
-          challengeWindow={challengeWindow}
-          userBalance={userBalance}
-        />
+      {positions.map((row) => (
+        <PositionCard key={row.id.toString()} row={row} challengeWindow={challengeWindow} />
       ))}
     </div>
   );
