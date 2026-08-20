@@ -10,9 +10,10 @@ import { parseUnits, formatUnits, parseEventLogs } from 'viem';
 import { CONTRACTS } from '../config/contracts.ts';
 import VeriflowClaimNFTABI from '../config/abis/VeriflowClaimNFT.json';
 import MockStablecoinABI from '../config/abis/MockStablecoin.json';
-import { RiskScore } from '../components/RiskScore.tsx';
+import RiskOracleABI from '../config/abis/RiskOracle.json';
 
 const CLAIM_TYPES = ['Invoice', 'Royalty', 'Rental'] as const;
+const CLAIM_ICONS  = ['📄', '🎵', '🏠'] as const;
 
 type Step = 'mint' | 'collateral' | 'done';
 
@@ -82,6 +83,15 @@ export default function ListClaim() {
   const { writeContractAsync } = useWriteContract();
   const { isLoading: isTxPending } = useWaitForTransactionReceipt({
     hash: txHash ?? undefined,
+  });
+
+  // Oracle read — same query as RiskScore component, inlined for risk strip display
+  const { data: requiredCollateralRaw, isLoading: isRiskLoading } = useReadContract({
+    address: CONTRACTS.RiskOracle as `0x${string}`,
+    abi: RiskOracleABI,
+    functionName: 'getRequiredCollateral',
+    args: [claimType, claimAmount],
+    query: { enabled: claimAmount > 0n },
   });
 
   // ── Mint ───────────────────────────────────────────────────────
@@ -161,168 +171,213 @@ export default function ListClaim() {
   }
 
   const minDueDate = new Date(Date.now() + 86400 * 1000).toISOString().slice(0, 10);
+  const collateralPct = claimType === 0 ? '10%' : claimType === 1 ? '15%' : '20%';
+
+  // Risk strip derived values
+  const oracleCollateral = requiredCollateralRaw as bigint | undefined;
+  const maxFunding = oracleCollateral !== undefined ? claimAmount - oracleCollateral : 0n;
+  const riskScore   = claimType === 0 ? 91 : claimType === 1 ? 78 : 65;
+  const riskBadgeCls = riskScore >= 85 ? 'lc-risk-badge--lo' : riskScore >= 70 ? 'lc-risk-badge--mid' : 'lc-risk-badge--hi';
 
   return (
     <div className="vf-page">
-      <h2>List a Claim</h2>
-      <p className="sub">Mint a claim NFT representing a real-world asset obligation, then lock collateral to open it for investor funding.</p>
+      <div className="lc-wrap">
 
-      {!isAllowlisted && (
-        <div className="vf-alert vf-alert-error">
-          Your address is not allowlisted as an originator. Ask the contract owner to call <code>setAllowlisted(yourAddress, true)</code>.
-        </div>
-      )}
-
-      {/* Step 1 — Mint */}
-      <div className="vf-card" style={{ opacity: step !== 'mint' ? 0.5 : 1 }}>
-        <h3>Step 1 — Claim details</h3>
-
-        <div className="vf-field">
-          <label>Claim Type</label>
-          <select
-            className="vf-select"
-            value={claimType}
-            onChange={e => setClaimType(Number(e.target.value) as 0 | 1 | 2)}
-            disabled={step !== 'mint'}
-          >
-            {CLAIM_TYPES.map((t, i) => <option key={t} value={i}>{t}</option>)}
-          </select>
+        {/* ── Step indicator ── */}
+        <div className="lc-steps">
+          <div className={`lc-step ${step !== 'mint' ? 'lc-step--done' : 'lc-step--active'}`}>
+            <span className="lc-step-num">{step !== 'mint' ? '✓' : '1'}</span>
+            <span className="lc-step-label">Details</span>
+          </div>
+          <div className="lc-step-line" />
+          <div className={`lc-step ${
+            step === 'collateral' ? 'lc-step--active' : step === 'done' ? 'lc-step--done' : 'lc-step--pending'
+          }`}>
+            <span className="lc-step-num">{step === 'done' ? '✓' : '2'}</span>
+            <span className="lc-step-label">Collateral</span>
+          </div>
         </div>
 
-        <div className="vf-field">
-          <label>Claim Amount (mUSD)</label>
-          <input
-            className="vf-input"
-            type="number"
-            placeholder="e.g. 10000"
-            value={amountStr}
-            onChange={e => setAmountStr(e.target.value)}
-            disabled={step !== 'mint'}
-          />
+        {/* ── Heading ── */}
+        <div className="lc-header">
+          <h2 className="lc-title">List your claim</h2>
+          <p className="lc-subtitle">Mint a claim NFT to unlock funding against future income.</p>
         </div>
 
-        <div className="vf-field">
-          <label>Payment Due Date</label>
-          <input
-            className="vf-input"
-            type="date"
-            min={minDueDate}
-            value={dueDateStr}
-            onChange={e => setDueDateStr(e.target.value)}
-            disabled={step !== 'mint'}
-          />
-        </div>
-
-        <div className="vf-field">
-          <label>Debtor Reference (optional)</label>
-          <input
-            className="vf-input"
-            type="text"
-            placeholder="e.g. invoice-001"
-            value={debtorRef}
-            onChange={e => setDebtorRef(e.target.value)}
-            disabled={step !== 'mint'}
-          />
-        </div>
-
-        {claimAmount > 0n && <RiskScore claimType={claimType} claimAmount={claimAmount} />}
-
-        {step === 'mint' ? (
-          <button
-            className="vf-btn vf-btn-primary"
-            disabled={!isAllowlisted || !amountStr || !dueDateStr || isTxPending}
-            onClick={handleMint}
-          >
-            {isTxPending ? 'Minting…' : 'Mint Claim NFT'}
-          </button>
-        ) : (
-          <div className="vf-alert vf-alert-success">
-            ✓ Claim NFT minted — token ID <strong>{mintedTokenId?.toString()}</strong>
+        {!isAllowlisted && (
+          <div className="vf-alert vf-alert-error">
+            Your address is not allowlisted as an originator. Ask the contract owner to call{' '}
+            <code>setAllowlisted(yourAddress, true)</code>.
           </div>
         )}
+
+        {/* ── STEP 1: Details ── */}
+        {step === 'mint' && (
+          <>
+            {/* Claim type tiles */}
+            <div className="lc-type-row">
+              {CLAIM_TYPES.map((label, i) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`lc-type-tile${claimType === i ? ' lc-type-tile--active' : ''}`}
+                  onClick={() => setClaimType(i as 0 | 1 | 2)}
+                >
+                  <span className="lc-type-icon">{CLAIM_ICONS[i]}</span>
+                  <span className="lc-type-label">{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Amount + details card */}
+            <div className="lc-amount-card">
+              <div className="lc-amount-header">
+                <span className="lc-amount-label">Claim amount</span>
+                <span className="lc-amount-unit">mUSD</span>
+              </div>
+              <input
+                type="number"
+                className="lc-amount-input"
+                placeholder="0"
+                value={amountStr}
+                onChange={e => setAmountStr(e.target.value)}
+              />
+              <div className="lc-amount-divider" />
+              <div className="lc-amount-meta">
+                <div className="lc-meta-field">
+                  <span className="lc-meta-label">Due date</span>
+                  <input
+                    type="date"
+                    className="lc-meta-input"
+                    min={minDueDate}
+                    value={dueDateStr}
+                    onChange={e => setDueDateStr(e.target.value)}
+                  />
+                </div>
+                <div className="lc-meta-field">
+                  <span className="lc-meta-label">Debtor ref</span>
+                  <input
+                    type="text"
+                    className="lc-meta-input"
+                    placeholder="e.g. invoice-001"
+                    value={debtorRef}
+                    onChange={e => setDebtorRef(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* AI risk estimate strip */}
+            <div className="lc-risk-strip">
+              {claimAmount > 0n ? (
+                isRiskLoading ? (
+                  <span className="lc-risk-placeholder">Querying oracle…</span>
+                ) : (
+                  <>
+                    <span className="lc-risk-text">
+                      AI est. collateral {collateralPct} · max funding {formatUnits(maxFunding, 18)} mUSD
+                    </span>
+                    <span className={`lc-risk-badge ${riskBadgeCls}`}>Risk {riskScore}</span>
+                  </>
+                )
+              ) : (
+                <span className="lc-risk-placeholder">Enter an amount to see your AI risk estimate</span>
+              )}
+            </div>
+
+            {/* Mint CTA */}
+            <button
+              className="vf-btn vf-btn-primary dash-btn-cta"
+              disabled={!isAllowlisted || !amountStr || !dueDateStr || isTxPending}
+              onClick={handleMint}
+            >
+              {isTxPending ? 'Minting…' : 'Continue to collateral'}
+            </button>
+          </>
+        )}
+
+        {/* ── STEP 2: Lock collateral ── */}
+        {step === 'collateral' && mintedTokenId !== null && (
+          <>
+            <div className="vf-alert vf-alert-success">
+              ✓ Claim NFT minted — token ID <strong>{mintedTokenId.toString()}</strong>
+            </div>
+            <div className="lc-amount-card">
+              <div className="lc-amount-header">
+                <span className="lc-amount-label">Collateral amount</span>
+                <span className="lc-amount-unit">mUSD</span>
+              </div>
+              <input
+                type="number"
+                className="lc-amount-input"
+                placeholder="0"
+                value={collateralStr}
+                onChange={e => setCollateralStr(e.target.value)}
+              />
+              <div className="lc-amount-divider" />
+              <p className="lc-amount-hint">
+                Oracle recommends {collateralPct} of the {amountStr} mUSD claim.
+              </p>
+            </div>
+            <button
+              className="vf-btn vf-btn-primary dash-btn-cta"
+              disabled={!collateralStr || collateralAmount === 0n || isTxPending}
+              onClick={handleLockCollateral}
+            >
+              {isTxPending ? 'Waiting for tx…' : 'Lock Collateral'}
+            </button>
+          </>
+        )}
+
+        {/* ── DONE ── */}
+        {step === 'done' && mintedTokenId !== null && (
+          <div className="vf-card" style={{ gap: '1.25rem' }}>
+            <h3 style={{ margin: 0, textAlign: 'center' }}>✓ Claim listed</h3>
+            <div className="dash-stat-rows">
+              <div className="dash-stat-row">
+                <span>Token ID</span>
+                <span className="dash-stat-row-val">#{mintedTokenId.toString()}</span>
+              </div>
+              <div className="dash-stat-row">
+                <span>Collateral locked</span>
+                <span className="dash-stat-row-val">{formatUnits(collateralAmount, 18)} mUSD</span>
+              </div>
+              <div className="dash-stat-row">
+                <span>Status</span>
+                <span className="vf-badge vf-badge-green">Open for funding</span>
+              </div>
+            </div>
+            <button
+              className="vf-btn vf-btn-secondary dash-btn-cta"
+              onClick={() => {
+                setStep('mint');
+                setMintedTokenId(null);
+                setAmountStr('');
+                setDueDateStr('');
+                setDebtorRef('');
+                setCollateralStr('');
+                setTxHash(null);
+                setError('');
+              }}
+            >
+              List another claim
+            </button>
+          </div>
+        )}
+
+        {/* Feedback */}
+        {error && <div className="vf-alert vf-alert-error">{error}</div>}
+        {txHash && step !== 'done' && (
+          <div className="vf-alert vf-alert-success">
+            Tx submitted:{' '}
+            <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">
+              {txHash}
+            </a>
+          </div>
+        )}
+
       </div>
-
-      {/* Step 2 — Lock collateral */}
-      {step === 'collateral' && mintedTokenId !== null && (
-        <div className="vf-card">
-          <h3>Step 2 — Lock collateral</h3>
-          <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text)' }}>
-            Lock mUSD collateral against token ID <strong>{mintedTokenId.toString()}</strong>.
-            The RiskOracle recommends {claimType === 0 ? '10%' : claimType === 1 ? '15%' : '20%'} of the claim amount for {CLAIM_TYPES[claimType]} claims.
-          </p>
-
-          <div className="vf-field">
-            <label>Collateral Amount (mUSD)</label>
-            <input
-              className="vf-input"
-              type="number"
-              placeholder="e.g. 1000"
-              value={collateralStr}
-              onChange={e => setCollateralStr(e.target.value)}
-            />
-          </div>
-
-          {claimAmount > 0n && <RiskScore claimType={claimType} claimAmount={claimAmount} />}
-
-          <button
-            className="vf-btn vf-btn-primary"
-            disabled={!collateralStr || collateralAmount === 0n || isTxPending}
-            onClick={handleLockCollateral}
-          >
-            {isTxPending ? 'Waiting for tx…' : 'Approve & Lock Collateral'}
-          </button>
-        </div>
-      )}
-
-      {/* Done */}
-      {step === 'done' && mintedTokenId !== null && (
-        <div className="vf-card">
-          <h3>✓ Claim listed successfully</h3>
-          <div className="vf-stats">
-            <div className="vf-stat">
-              <span className="vf-stat-label">Token ID</span>
-              <span className="vf-stat-value">{mintedTokenId.toString()}</span>
-            </div>
-            <div className="vf-stat">
-              <span className="vf-stat-label">Collateral Locked</span>
-              <span className="vf-stat-value">{formatUnits(collateralAmount, 18)} mUSD</span>
-            </div>
-            <div className="vf-stat">
-              <span className="vf-stat-label">Status</span>
-              <span className="vf-badge vf-badge-green">Open for funding</span>
-            </div>
-          </div>
-          <button
-            className="vf-btn vf-btn-secondary"
-            onClick={() => {
-              setStep('mint');
-              setMintedTokenId(null);
-              setAmountStr('');
-              setDueDateStr('');
-              setDebtorRef('');
-              setCollateralStr('');
-              setTxHash(null);
-              setError('');
-            }}
-          >
-            List another claim
-          </button>
-        </div>
-      )}
-
-      {/* Tx feedback */}
-      {error && <div className="vf-alert vf-alert-error">{error}</div>}
-
-      {txHash && step !== 'done' && (
-        <div className="vf-alert vf-alert-success">
-          Tx submitted:{' '}
-          <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">
-            {txHash}
-          </a>
-        </div>
-      )}
     </div>
   );
 }
-
 
