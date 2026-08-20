@@ -19,7 +19,7 @@ const TOKEN_ADDR = CONTRACTS.MockStablecoin     as `0x${string}`;
 const ORACLE_ADDR= CONTRACTS.RiskOracle         as `0x${string}`;
 
 const CLAIM_TYPE_LABELS = ['Invoice', 'Royalty', 'Rental'] as const;
-const CLAIM_TYPE_BADGE  = ['vf-badge-purple', 'vf-badge-green', 'vf-badge-yellow'] as const;
+// const CLAIM_TYPE_BADGE  = ['vf-badge-purple', 'vf-badge-green', 'vf-badge-yellow'] as const;
 const COLLATERAL_RATIO  = ['10%', '15%', '20%'] as const;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: stri
   const insufficientBalance = inputAmount > userBalance;
   const canFund = inputAmount > 0n && !aboveCapError && !insufficientBalance && fundingStep === 'idle';
 
-  const dueDateStr = new Date(Number(claim.dueDate) * 1000).toLocaleDateString();
+  const _dueDateStr = new Date(Number(claim.dueDate) * 1000).toLocaleDateString(); void _dueDateStr;
 
   async function handleApproveAndFund() {
     setError('');
@@ -211,80 +211,52 @@ function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: stri
 
   if (fundingStep === 'funded') {
     return (
-      <div className="vf-card" style={{ opacity: 0.7 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, color: 'var(--text-h)' }}>Claim #{claim.id.toString()}</span>
-          <span className="vf-badge vf-badge-green">✓ Funded</span>
-        </div>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text)' }}>
-          You funded <strong>{formatUnits(inputAmount, 18)} mUSD</strong> for this claim.
+      <div className="vf-alert vf-alert-success" style={{ textAlign: 'center', padding: '1.25rem' }}>
+        <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>✓ Claim #{claim.id.toString()} funded</div>
+        <div style={{ fontSize: '0.85rem' }}>
+          You funded <strong>{formatUnits(inputAmount, 18)} mUSD</strong>.
           {txHash && (
-            <> Tx: <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">{txHash.slice(0,18)}…</a></>
+            <> <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">View tx ↗</a></>
           )}
-        </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="vf-card">
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontWeight: 700, color: 'var(--text-h)', fontFamily: 'var(--mono)', fontSize: '0.9rem' }}>#{claim.id.toString()}</span>
-          <span className={`vf-badge ${CLAIM_TYPE_BADGE[claim.claimType]}`}>{CLAIM_TYPE_LABELS[claim.claimType]}</span>
-          <span className="vf-badge vf-badge-green">Open</span>
+    <>
+      {/* Funding amount card */}
+      <div className="lc-amount-card">
+        <div className="lc-amount-header">
+          <span className="lc-amount-label">Funding amount</span>
+          <span className="lc-amount-unit">max {formatUnits(claim.maxFundingAmount, 18)} mUSD</span>
         </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text)' }}>Due {dueDateStr}</span>
-      </div>
-
-      {/* Stats */}
-      <div className="vf-stats">
-        <div className="vf-stat">
-          <span className="vf-stat-label">Claim Amount</span>
-          <span className="vf-stat-value">{formatUnits(claim.amount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Collateral Locked</span>
-          <span className="vf-stat-value">{formatUnits(claim.collateralAmount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Max You Can Fund</span>
-          <span className="vf-stat-value">{formatUnits(claim.maxFundingAmount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Collateral Ratio</span>
-          <span className="vf-stat-value">{COLLATERAL_RATIO[claim.claimType]}</span>
-        </div>
-      </div>
-
-      {/* Originator */}
-      <div style={{ fontSize: '0.8rem', color: 'var(--text)' }}>
-        Originator: <code style={{ fontFamily: 'var(--mono)', color: 'var(--text-h)' }}>{claim.originator.slice(0, 10)}…{claim.originator.slice(-6)}</code>
-      </div>
-
-      {/* Separator */}
-      <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
-
-      {/* Immediate-payout notice */}
-      <div className="vf-alert vf-alert-info" style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}>
-        ⚡ Funds are paid <strong>directly to the originator immediately</strong> — not held in escrow. Your return comes when the originator repays principal + 10% yield.
-      </div>
-
-      {/* Funding input */}
-      <div className="vf-field">
-        <label>Funding Amount (mUSD) — max {formatUnits(claim.maxFundingAmount, 18)}</label>
         <input
-          className="vf-input"
           type="number"
+          className="lc-amount-input"
           step="any"
           value={amountStr}
           onChange={e => setAmountStr(e.target.value)}
           disabled={fundingStep !== 'idle'}
         />
+        <div className="lc-amount-divider" />
+        <div className="bf-meta-grid">
+          <div className="lc-meta-field">
+            <span className="lc-meta-label">Claim value</span>
+            <span className="bf-meta-val">{formatUnits(claim.amount, 18)} mUSD</span>
+          </div>
+          <div className="lc-meta-field">
+            <span className="lc-meta-label">Collateral</span>
+            <span className="bf-meta-val">{formatUnits(claim.collateralAmount, 18)} mUSD</span>
+          </div>
+          <div className="lc-meta-field">
+            <span className="lc-meta-label">Ratio</span>
+            <span className="bf-meta-val">{COLLATERAL_RATIO[claim.claimType]}</span>
+          </div>
+        </div>
       </div>
 
-      {/* Inline validation errors */}
+      {/* Cap validation errors */}
       {aboveCapError && (
         <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem' }}>
           Amount exceeds funding cap of {formatUnits(claim.maxFundingAmount, 18)} mUSD (claimAmount − collateral).
@@ -296,20 +268,28 @@ function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: stri
         </div>
       )}
 
-      {/* Your balance */}
-      <div style={{ fontSize: '0.75rem', color: 'var(--text)', textAlign: 'right' }}>
+      {/* Info strip */}
+      <div className="lc-risk-strip">
+        <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚡</span>
+        <span className="lc-risk-text">
+          Funds are paid <strong style={{ color: 'var(--text-h)' }}>directly to the originator</strong> — your return comes when they repay principal + 10% yield.
+        </span>
+      </div>
+
+      {/* Balance */}
+      <div style={{ textAlign: 'right', fontSize: '0.78rem', color: 'var(--text)' }}>
         Your balance: {formatUnits(userBalance, 18)} mUSD
       </div>
 
-      {/* CTA button */}
+      {/* CTA */}
       <button
-        className="vf-btn vf-btn-primary"
+        className="vf-btn vf-btn-primary dash-btn-cta"
         disabled={!canFund}
         onClick={handleApproveAndFund}
       >
         {fundingStep === 'approving' ? '⏳ Approving mUSD…' :
          fundingStep === 'funding'   ? '⏳ Funding claim…'  :
-         'Approve mUSD & Fund Claim'}
+         'Approve mUSD & fund claim'}
       </button>
 
       {/* Two-step progress */}
@@ -326,7 +306,7 @@ function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: stri
       )}
 
       {/* Tx hash */}
-      {txHash && fundingStep !== 'funded' && (
+      {txHash && (fundingStep as string) !== 'funded' && (
         <div style={{ fontSize: '0.75rem', color: 'var(--text)' }}>
           Tx: <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">{txHash.slice(0,20)}…</a>
         </div>
@@ -334,7 +314,7 @@ function ClaimCard({ claim, userAddress }: { claim: ClaimInfo; userAddress: stri
 
       {/* Error */}
       {error && <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem', wordBreak: 'break-word' }}>{error}</div>}
-    </div>
+    </>
   );
 }
 
@@ -369,6 +349,7 @@ export default function BrowseFund() {
 
   const { address, isConnected } = useAccount();
   const [decodeError, setDecodeError] = useState<DecodeIssue | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   // 1. Total minted claims
   const { data: totalRaw, isLoading: loadingTotal } = useReadContract({
@@ -536,41 +517,81 @@ export default function BrowseFund() {
     );
   }
 
+  const selectedClaim = fundableClaims.find(c => Number(c.id) === selectedId) ?? fundableClaims[0];
+
   return (
     <div className="vf-page">
-      <h2>Browse &amp; Fund Claims</h2>
-      <p className="sub">Open claims with locked collateral. Fund a claim to provide working capital to the originator and earn 10% yield on repayment.</p>
+      <div className="vf-dashboard-content">
+      <div className="lc-wrap" style={{ maxWidth: '560px' }}>
 
-      {isLoading && (
-        <div className="vf-alert vf-alert-info">Loading claims from chain…</div>
-      )}
-
-      {decodeError && (
-        <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
-          Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+        {/* Heading */}
+        <div className="lc-header">
+          <h2 className="lc-title">Fund a claim</h2>
+          <p className="lc-subtitle">Provide working capital today, earn yield on repayment.</p>
         </div>
-      )}
 
-      {!isLoading && total === 0n && (
-        <div className="vf-card">
-          <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
-            No claims have been minted yet. Be the first originator on{' '}
-            <strong>List a Claim</strong>.
+        {/* Loading */}
+        {isLoading && <div className="vf-alert vf-alert-info">Loading claims from chain…</div>}
+
+        {/* Decode warning */}
+        {decodeError && (
+          <div className="vf-alert vf-alert-error" style={{ fontSize: '0.82rem', wordBreak: 'break-word' }}>
+            Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+          </div>
+        )}
+
+        {/* Empty states */}
+        {!isLoading && total === 0n && (
+          <p style={{ textAlign: 'center', color: 'var(--text)', fontSize: '0.9rem', margin: 0 }}>
+            No claims minted yet. Try <strong>List a Claim</strong> first.
           </p>
-        </div>
-      )}
-
-      {!isLoading && total > 0n && fundableClaims.length === 0 && (
-        <div className="vf-card">
-          <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
-            No open claims available right now. All minted claims are either not yet collateralised or already funded.
+        )}
+        {!isLoading && total > 0n && fundableClaims.length === 0 && (
+          <p style={{ textAlign: 'center', color: 'var(--text)', fontSize: '0.9rem', margin: 0 }}>
+            No open claims available right now. All claims are either not yet collateralised or already funded.
           </p>
-        </div>
-      )}
+        )}
 
-      {fundableClaims.map(claim => (
-        <ClaimCard key={claim.id.toString()} claim={claim} userAddress={address ?? ''} />
-      ))}
+        {/* Claim selector */}
+        {fundableClaims.length > 0 && (
+          <div className="bf-selector">
+            {fundableClaims.map(claim => {
+              const isActive = Number(claim.id) === (selectedId ?? Number(fundableClaims[0].id));
+              const due = new Date(Number(claim.dueDate) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const iconCls = claim.claimType === 0 ? 'dash-row-icon--invoice' : claim.claimType === 1 ? 'dash-row-icon--royalty' : 'dash-row-icon--rental';
+              const typeIcon = claim.claimType === 0 ? '📄' : claim.claimType === 1 ? '🎵' : '🏠';
+              return (
+                <button
+                  key={claim.id.toString()}
+                  type="button"
+                  className={`bf-selector-row${isActive ? ' bf-selector-row--active' : ''}`}
+                  style={{ opacity: isActive ? 1 : 0.5 }}
+                  onClick={() => setSelectedId(Number(claim.id))}
+                >
+                  <span className={`dash-row-icon ${iconCls}`}>{typeIcon}</span>
+                  <div className="bf-row-info">
+                    <span className="dash-row-title">{CLAIM_TYPE_LABELS[claim.claimType]} #{claim.id.toString()}</span>
+                    <span className="dash-row-sub">Due {due}</span>
+                  </div>
+                  <span className="vf-badge vf-badge-green">Open</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Funding card for selected claim */}
+        {selectedClaim && (
+          <ClaimCard
+            key={selectedClaim.id.toString()}
+            claim={selectedClaim}
+            userAddress={address ?? ''}
+          />
+        )}
+
+      </div>
+      </div>
     </div>
   );
 }
+

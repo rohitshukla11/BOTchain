@@ -101,7 +101,7 @@ export default function ListClaim() {
     try {
       const dueTimestamp = BigInt(Math.floor(new Date(dueDateStr).getTime() / 1000));
       const debtorBytes32 = debtorRef
-        ? ('0x' + Buffer.from(debtorRef).toString('hex').padEnd(64, '0')) as `0x${string}`
+        ? ('0x' + Array.from(new TextEncoder().encode(debtorRef)).map(b => b.toString(16).padStart(2, '0')).join('').padEnd(64, '0').slice(0, 64)) as `0x${string}`
         : '0x0000000000000000000000000000000000000000000000000000000000000000';
 
       const hash = await writeContractAsync({
@@ -120,7 +120,8 @@ export default function ListClaim() {
         logs: receipt.logs,
       });
       if (logs.length > 0) {
-        const tokenId = (logs[0].args as { tokenId: bigint }).tokenId;
+        const logArgs = (logs[0] as unknown as { args: { tokenId: bigint } }).args;
+        const tokenId = logArgs.tokenId;
         setMintedTokenId(tokenId);
         setStep('collateral');
       }
@@ -173,14 +174,19 @@ export default function ListClaim() {
   const minDueDate = new Date(Date.now() + 86400 * 1000).toISOString().slice(0, 10);
   const collateralPct = claimType === 0 ? '10%' : claimType === 1 ? '15%' : '20%';
 
-  // Risk strip derived values
+  // Risk strip derived values — score formula: 91 − (collateral% − 10) × 2.6
+  // Anchored to oracle data: Invoice 10%→91, Royalty 15%→78, Rental 20%→65
   const oracleCollateral = requiredCollateralRaw as bigint | undefined;
   const maxFunding = oracleCollateral !== undefined ? claimAmount - oracleCollateral : 0n;
-  const riskScore   = claimType === 0 ? 91 : claimType === 1 ? 78 : 65;
+  const ratioPct = oracleCollateral !== undefined && claimAmount > 0n
+    ? Number(oracleCollateral * 100n / claimAmount)
+    : (claimType === 0 ? 10 : claimType === 1 ? 15 : 20);
+  const riskScore   = Math.max(0, Math.min(100, Math.round(91 - (ratioPct - 10) * 2.6)));
   const riskBadgeCls = riskScore >= 85 ? 'lc-risk-badge--lo' : riskScore >= 70 ? 'lc-risk-badge--mid' : 'lc-risk-badge--hi';
 
   return (
     <div className="vf-page">
+      <div className="vf-dashboard-content">
       <div className="lc-wrap">
 
         {/* ── Step indicator ── */}
@@ -205,9 +211,8 @@ export default function ListClaim() {
         </div>
 
         {!isAllowlisted && (
-          <div className="vf-alert vf-alert-error">
-            Your address is not allowlisted as an originator. Ask the contract owner to call{' '}
-            <code>setAllowlisted(yourAddress, true)</code>.
+          <div className="vf-alert" style={{ background: 'rgba(255, 255, 255, 0.03)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text)' }}>
+            New originator approval is currently a manual step during our testnet phase — self-serve onboarding is coming soon. Reach out to the team to get your address approved.
           </div>
         )}
 
@@ -376,6 +381,7 @@ export default function ListClaim() {
           </div>
         )}
 
+      </div>
       </div>
     </div>
   );

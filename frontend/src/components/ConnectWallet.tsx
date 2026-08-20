@@ -41,7 +41,7 @@ export function ConnectWallet() {
   }
 
   const injectedConnector = config.connectors.find(c => c.type === 'injected');
-  const noProvider = typeof window !== 'undefined' && !(window as Record<string, unknown>).ethereum;
+  const noProvider = typeof window !== 'undefined' && !(window as unknown as Record<string, unknown>).ethereum;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import {
   useAccount,
   usePublicClient,
@@ -220,13 +221,23 @@ function toBytes32(input: string): `0x${string}` {
   return (`0x${hex.padEnd(64, '0')}`) as `0x${string}`;
 }
 
-function statusBadgeClass(status: ClaimStatus): string {
-  if (status === 'Awaiting Collateral') return 'vf-badge-yellow';
-  if (status === 'Open for Funding') return 'vf-badge-green';
-  if (status === 'Funded - Repayment Due') return 'vf-badge-purple';
-  if (status === 'Evidence Submitted - Challenge Window Open') return 'vf-badge-yellow';
-  if (status === 'Disputed') return 'vf-badge-red';
-  return 'vf-badge-green';
+function lifecycleState(row: MyClaimRow): { pct: number; caption: string } {
+  if (row.status === 'Disputed')        return { pct: 60,  caption: 'Disputed · pending arbitration' };
+  if (row.status === 'Repaid & Closed') return { pct: 100, caption: 'Settled · closed' };
+  if (row.funding.repaymentDeposited)   return { pct: 83,  caption: 'Repayment deposited · finalizing' };
+  if (row.status === 'Evidence Submitted - Challenge Window Open') return { pct: 66, caption: 'Evidence submitted · challenge window open' };
+  if (row.status === 'Funded - Repayment Due') return { pct: 50, caption: 'Funded · repayment due' };
+  if (row.status === 'Open for Funding')       return { pct: 33, caption: 'Minted · awaiting investor' };
+  return { pct: 16, caption: 'Minted · awaiting collateral' };
+}
+
+function statusPillStyle(status: ClaimStatus): React.CSSProperties {
+  if (status === 'Open for Funding')   return { background: 'rgba(46,230,197,0.18)', color: '#2ee6c5' };
+  if (status === 'Funded - Repayment Due') return { background: 'rgba(124,92,255,0.18)', color: '#c4b0ff' };
+  if (status === 'Evidence Submitted - Challenge Window Open') return { background: 'rgba(245,182,92,0.15)', color: '#f5b65c' };
+  if (status === 'Disputed') return { background: 'rgba(239,83,80,0.15)', color: '#ef5350' };
+  if (status === 'Repaid & Closed') return { background: 'rgba(46,230,197,0.12)', color: '#2ee6c5' };
+  return { background: 'rgba(245,182,92,0.15)', color: '#f5b65c' }; // Awaiting Collateral
 }
 
 function ClaimCard({
@@ -381,138 +392,179 @@ function ClaimCard({
     }
   }
 
+  const { pct, caption } = lifecycleState(row);
+  const typeIcon = row.claim.claimType === 0 ? '📄' : row.claim.claimType === 1 ? '🎵' : '🏠';
+  const iconCls  = row.claim.claimType === 0 ? 'dash-row-icon--invoice' : row.claim.claimType === 1 ? 'dash-row-icon--royalty' : 'dash-row-icon--rental';
+  const claimLabel = CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown';
+
+  // Compact closed row
+  if (row.status === 'Repaid & Closed') {
+    return (
+      <div className="mc-closed-row">
+        <span className={`dash-row-icon ${iconCls}`} style={{ width: '1.8rem', height: '1.8rem', fontSize: '0.85rem' }}>{typeIcon}</span>
+        <div className="mc-closed-left">
+          <div>
+            <div className="dash-row-title">{claimLabel} #{row.id.toString()}</div>
+            <div className="dash-row-sub">Settled</div>
+          </div>
+        </div>
+        <div className="mc-closed-right">
+          <span className="mc-yield-text">+{formatUnits(row.yieldAmount, 18)} yield paid</span>
+          <span className="mc-status-pill" style={{ background: 'rgba(245,246,248,0.08)', color: 'var(--text)' }}>Repaid &amp; closed</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Active claim card
   return (
-    <div className="vf-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, color: 'var(--text-h)', fontFamily: 'var(--mono)', fontSize: '0.9rem' }}>#{row.id.toString()}</span>
-          <span className="vf-badge vf-badge-purple">{CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'}</span>
-          <span className={`vf-badge ${statusBadgeClass(row.status)}`}>{row.status}</span>
+    <div className="mc-card">
+      {/* Header: icon + name/date | status pill */}
+      <div className="mc-card-header">
+        <div className="mc-card-left">
+          <span className={`dash-row-icon ${iconCls}`}>{typeIcon}</span>
+          <div className="mc-card-info">
+            <span className="mc-card-name">{claimLabel} #{row.id.toString()}</span>
+            <span className="mc-card-date">Due {dueDateText}</span>
+          </div>
         </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text)' }}>Due {dueDateText}</span>
+        <span className="mc-status-pill" style={statusPillStyle(row.status)}>{row.status}</span>
       </div>
 
-      <div className="vf-stats">
-        <div className="vf-stat">
-          <span className="vf-stat-label">Claim Amount</span>
-          <span className="vf-stat-value">{formatUnits(row.claim.amount, 18)} mUSD</span>
+      {/* 4-col data grid */}
+      <div className="mc-data-grid">
+        <div className="mc-data-cell">
+          <span className="mc-data-label">Claim</span>
+          <span className="mc-data-val">{Number(formatUnits(row.claim.amount, 18)).toLocaleString()}</span>
         </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Collateral</span>
-          <span className="vf-stat-value">{row.collateral.locked ? `${formatUnits(row.collateral.amount, 18)} mUSD` : 'Not locked'}</span>
+        <div className="mc-data-cell">
+          <span className="mc-data-label">Collateral</span>
+          <span className={`mc-data-val${row.collateral.locked ? '' : ' mc-data-val--muted'}`}>
+            {row.collateral.locked ? Number(formatUnits(row.collateral.amount, 18)).toLocaleString() : '—'}
+          </span>
         </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Funded Principal</span>
-          <span className="vf-stat-value">{row.funding.funded ? `${formatUnits(row.funding.fundedAmount, 18)} mUSD` : 'Not funded'}</span>
+        <div className="mc-data-cell">
+          <span className="mc-data-label">Funded</span>
+          <span className={`mc-data-val${row.funding.funded ? '' : ' mc-data-val--muted'}`}>
+            {row.funding.funded ? Number(formatUnits(row.funding.fundedAmount, 18)).toLocaleString() : '—'}
+          </span>
         </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Repayment Required</span>
-          <span className="vf-stat-value">{row.funding.funded ? `${formatUnits(row.requiredRepayment, 18)} mUSD` : '-'}</span>
+        <div className="mc-data-cell">
+          <span className="mc-data-label">Repay due</span>
+          <span className={`mc-data-val${row.funding.funded ? '' : ' mc-data-val--muted'}`}>
+            {row.funding.funded ? Number(formatUnits(row.requiredRepayment, 18)).toLocaleString() : '—'}
+          </span>
         </div>
       </div>
 
+      {/* Lifecycle progress bar */}
+      <div>
+        <div className="mc-bar-wrap">
+          <div className="mc-bar" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mc-bar-caption" style={{ marginTop: '0.35rem' }}>{caption}</div>
+      </div>
+
+      {/* Challenge window alert */}
       {row.status === 'Evidence Submitted - Challenge Window Open' && (
-        <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-          Challenge window length: {Number(challengeWindow)}s. {countdownSec > 0
+        <div className="vf-alert vf-alert-info" style={{ fontSize: '0.82rem' }}>
+          Challenge window: {Number(challengeWindow)}s. {countdownSec > 0
             ? `Time remaining: ${formatCountdown(countdownSec)}`
-            : 'Challenge window time has elapsed; settlement can proceed if undisputed.'}
+            : 'Challenge window elapsed; settlement can proceed if undisputed.'}
         </div>
       )}
 
+      {/* Submit evidence */}
       {canSubmitEvidence && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div className="vf-field" style={{ marginTop: 0 }}>
-            <label>Repayment Evidence Hash / Note</label>
-            <input
-              className="vf-input"
-              placeholder="0x... (bytes32) or plain-text note"
-              value={evidenceInput}
-              onChange={(e) => setEvidenceInput(e.target.value)}
-              disabled={actionState !== 'idle'}
-            />
-          </div>
-          <button
-            className="vf-btn vf-btn-primary"
-            onClick={handleSubmitEvidence}
-            disabled={!evidenceInput.trim() || actionState !== 'idle'}
-          >
-            {actionState === 'submitting-evidence' ? 'Submitting evidence...' : 'Submit Repayment Evidence'}
-          </button>
-        </div>
-      )}
-
-      {canDepositRepayment && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-            You must repay {formatUnits(row.requiredRepayment, 18)} mUSD ({formatUnits(row.funding.fundedAmount, 18)} mUSD principal + {formatUnits(row.yieldAmount, 18)} mUSD yield).
-          </div>
-          {insufficientBalance && (
-            <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem' }}>
-              Insufficient mUSD balance. You have {formatUnits(userBalance, 18)} mUSD but need {formatUnits(row.requiredRepayment, 18)} mUSD.
+        <>
+          <div className="mc-action-sep" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div className="vf-field">
+              <label>Repayment Evidence Hash / Note</label>
+              <input
+                className="vf-input"
+                placeholder="0x… (bytes32) or plain-text note"
+                value={evidenceInput}
+                onChange={(e) => setEvidenceInput(e.target.value)}
+                disabled={actionState !== 'idle'}
+              />
             </div>
-          )}
-          <button
-            className="vf-btn vf-btn-primary"
-            onClick={handleApproveAndDeposit}
-            disabled={insufficientBalance || actionState !== 'idle'}
-          >
-            {actionState === 'approving'
-              ? 'Approving mUSD...'
-              : actionState === 'depositing'
-                ? 'Depositing repayment...'
-                : 'Approve mUSD & Deposit Repayment'}
-          </button>
-        </div>
-      )}
-
-      {row.funding.repaymentDeposited && row.status !== 'Repaid & Closed' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-            Repayment has been deposited on-chain. Awaiting distribution and collateral release.
+            <button
+              className="vf-btn vf-btn-primary dash-btn-cta"
+              onClick={handleSubmitEvidence}
+              disabled={!evidenceInput.trim() || actionState !== 'idle'}
+            >
+              {actionState === 'submitting-evidence' ? 'Submitting evidence…' : 'Submit Repayment Evidence'}
+            </button>
           </div>
+        </>
+      )}
 
-          {canFinalizeSettlement && (
-            <>
-              {!challengeWindowElapsed && (
-                <div className="vf-alert vf-alert-info" style={{ fontSize: '0.8rem' }}>
-                  Finalization unlocks after challenge window expiry. Time remaining: {formatCountdown(countdownSec)}
-                </div>
-              )}
-              <button
-                className="vf-btn vf-btn-primary"
-                onClick={handleFinalizeSettlement}
-                disabled={!challengeWindowElapsed || actionState !== 'idle'}
-              >
-                {actionState === 'finalizing-distribution'
-                  ? 'Finalizing: Distributing to investor...'
-                  : actionState === 'finalizing-release'
-                    ? 'Finalizing: Releasing collateral...'
+      {/* Deposit repayment */}
+      {canDepositRepayment && (
+        <>
+          <div className="mc-action-sep" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div className="vf-alert vf-alert-info" style={{ fontSize: '0.82rem' }}>
+              You must repay {formatUnits(row.requiredRepayment, 18)} mUSD ({formatUnits(row.funding.fundedAmount, 18)} principal + {formatUnits(row.yieldAmount, 18)} yield).
+            </div>
+            {insufficientBalance && (
+              <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem' }}>
+                Insufficient mUSD balance. You have {formatUnits(userBalance, 18)} but need {formatUnits(row.requiredRepayment, 18)} mUSD.
+              </div>
+            )}
+            <button
+              className="vf-btn vf-btn-primary dash-btn-cta"
+              onClick={handleApproveAndDeposit}
+              disabled={insufficientBalance || actionState !== 'idle'}
+            >
+              {actionState === 'approving' ? 'Approving mUSD…'
+                : actionState === 'depositing' ? 'Depositing repayment…'
+                : 'Approve mUSD & Deposit Repayment'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Finalize settlement */}
+      {row.funding.repaymentDeposited && (row.status as string) !== 'Repaid & Closed' && (
+        <>
+          <div className="mc-action-sep" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div className="vf-alert vf-alert-success" style={{ fontSize: '0.82rem' }}>
+              Repayment deposited on-chain. Awaiting distribution and collateral release.
+            </div>
+            {canFinalizeSettlement && (
+              <>
+                {!challengeWindowElapsed && (
+                  <div className="vf-alert vf-alert-info" style={{ fontSize: '0.8rem' }}>
+                    Finalization unlocks after challenge window. Time remaining: {formatCountdown(countdownSec)}
+                  </div>
+                )}
+                <button
+                  className="vf-btn vf-btn-primary dash-btn-cta"
+                  onClick={handleFinalizeSettlement}
+                  disabled={!challengeWindowElapsed || actionState !== 'idle'}
+                >
+                  {actionState === 'finalizing-distribution' ? 'Distributing to investor…'
+                    : actionState === 'finalizing-release' ? 'Releasing collateral…'
                     : 'Finalize Settlement'}
-              </button>
-            </>
-          )}
-        </div>
+                </button>
+              </>
+            )}
+          </div>
+        </>
       )}
 
-      {row.status === 'Repaid & Closed' && (
-        <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-          This claim is fully settled: repayment distributed and collateral released.
-        </div>
-      )}
-
+      {/* Tx / done / error */}
       {txHash && (
-        <div className="vf-alert vf-alert-success">
-          Tx submitted:{' '}
-          <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">
-            {txHash}
-          </a>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text)' }}>
+          Tx: <a className="vf-txlink" href={`https://scan.bohr.life/tx/${txHash}`} target="_blank" rel="noreferrer">{txHash.slice(0, 20)}…</a>
         </div>
       )}
-
       {actionState === 'done' && (
-        <div className="vf-alert vf-alert-success">Confirmed on-chain. Refresh this page/tab to load updated status.</div>
+        <div className="vf-alert vf-alert-success">Confirmed on-chain. Refresh to load updated status.</div>
       )}
-
       {error && <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem', wordBreak: 'break-word' }}>{error}</div>}
     </div>
   );
@@ -731,35 +783,39 @@ export default function MyClaims() {
 
   return (
     <div className="vf-page">
-      <h2>My Claims</h2>
-      <p className="sub">Track each minted claim through collateral, funding, evidence, disputes, and final settlement.</p>
+      <div className="vf-dashboard-content">
+      <div className="lc-wrap" style={{ maxWidth: '680px' }}>
 
-      {isLoading && (
-        <div className="vf-alert vf-alert-info">Loading your claims from chain...</div>
-      )}
-
-      {decodeError && (
-        <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
-          Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+        <div>
+          <h2 style={{ margin: 0, fontFamily: 'var(--heading)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-h)', letterSpacing: '-0.02em' }}>My claims</h2>
+          <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', color: 'var(--text)' }}>Track each claim from collateral to final settlement.</p>
         </div>
-      )}
 
-      {!isLoading && myClaims.length === 0 && (
-        <div className="vf-card">
-          <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
+        {isLoading && <div className="vf-alert vf-alert-info">Loading your claims from chain…</div>}
+
+        {decodeError && (
+          <div className="vf-alert vf-alert-error" style={{ fontSize: '0.82rem', wordBreak: 'break-word' }}>
+            Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+          </div>
+        )}
+
+        {!isLoading && myClaims.length === 0 && (
+          <p style={{ textAlign: 'center', color: 'var(--text)', fontSize: '0.9rem', margin: 0 }}>
             You have not minted any claims yet. Start from <strong>List a Claim</strong>.
           </p>
-        </div>
-      )}
+        )}
 
-      {myClaims.map((row) => (
-        <ClaimCard
-          key={row.id.toString()}
-          row={row}
-          challengeWindow={challengeWindow}
-          userBalance={userBalance}
-        />
-      ))}
+        {myClaims.map((row) => (
+          <ClaimCard
+            key={row.id.toString()}
+            row={row}
+            challengeWindow={challengeWindow}
+            userBalance={userBalance}
+          />
+        ))}
+
+      </div>
+      </div>
     </div>
   );
 }

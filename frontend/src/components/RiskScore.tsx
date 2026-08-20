@@ -3,7 +3,6 @@ import { formatUnits } from 'viem';
 import { CONTRACTS } from '../config/contracts.ts';
 import RiskOracleABI from '../config/abis/RiskOracle.json';
 
-const CLAIM_TYPES = ['Invoice', 'Royalty', 'Rental'] as const;
 type ClaimType = 0 | 1 | 2;
 
 interface RiskScoreProps {

@@ -24,14 +24,7 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="vf-page">
-      <h2>{title}</h2>
-      <div className="vf-alert vf-alert-info">Coming soon — this page is being built.</div>
-    </div>
-  );
-}
+
 
 export default function App() {
   const [view, setView] = useState<'landing' | 'app'>('landing');
@@ -72,7 +65,7 @@ export default function App() {
             ))}
             {isOwner && (
               <button
-                className={`vf-tab${activeTab === 'admin' ? ' active' : ''}`}
+                className={`vf-tab${activeTab === ('admin' as string) ? ' active' : ''}`}
                 onClick={() => setActiveTab('admin' as TabId)}
               >
                 Admin

@@ -240,11 +240,11 @@ function normalizeBool(raw: unknown, field: string): boolean {
   throw new Error(`Invalid boolean result for ${field}`);
 }
 
-function statusBadge(resolution: ResolutionData): string {
-  if (resolution.resolved) return 'vf-badge-green';
-  if (resolution.approvals >= 2n || resolution.rejections >= 2n) return 'vf-badge-yellow';
-  return 'vf-badge-red';
+function formatAmt(value: bigint): string {
+  const num = Number(formatUnits(value, 18));
+  return num.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
+
 
 function DisputeCard({
   row,
@@ -273,6 +273,8 @@ function DisputeCard({
   const [localRejections, setLocalRejections] = useState<bigint>(row.resolution.rejections);
   const [localResolved, setLocalResolved] = useState<boolean>(row.resolution.resolved);
   const [localHasVoted, setLocalHasVoted] = useState<boolean | null>(hasVoted);
+  // Tracks which direction the current session vote went (null = voted before page load).
+  const [localVotedDirection, setLocalVotedDirection] = useState<boolean | null>(null);
 
   useEffect(() => {
     setLocalApprovals(row.resolution.approvals);
@@ -285,8 +287,9 @@ function DisputeCard({
   }, [row.id, hasVoted]);
 
   const quorum = 2n;
-  const approvalsToQuorum = localApprovals >= quorum ? 0n : quorum - localApprovals;
-  const rejectionsToQuorum = localRejections >= quorum ? 0n : quorum - localRejections;
+  const _approvalsToQuorum = localApprovals >= quorum ? 0n : quorum - localApprovals;
+  const _rejectionsToQuorum = localRejections >= quorum ? 0n : quorum - localRejections;
+  void _approvalsToQuorum; void _rejectionsToQuorum;
   const approveReachedQuorum = localApprovals >= quorum;
   const rejectReachedQuorum = localRejections >= quorum;
   const canExecute = !localResolved && (approveReachedQuorum || rejectReachedQuorum);
@@ -329,6 +332,7 @@ function DisputeCard({
 
       // Optimistic local updates so arbitrators immediately see vote state and quorum progress.
       setLocalHasVoted(true);
+      setLocalVotedDirection(approved);
       if (approved) {
         setLocalApprovals((prev) => prev + 1n);
       } else {
@@ -386,112 +390,188 @@ function DisputeCard({
     }
   }
 
+  // ── Derived presentation values ────────────────────────────────────────────
+  const cardBorderColor = localResolved
+    ? 'rgba(46,230,197,0.35)'
+    : canExecute
+      ? (executeApprovedSide ? 'rgba(34,197,94,0.55)' : 'rgba(239,83,80,0.65)')
+      : 'rgba(239,83,80,0.45)';
+  const cardGlow = localResolved
+    ? 'rgba(46,230,197,0.12)'
+    : canExecute
+      ? (executeApprovedSide ? 'rgba(34,197,94,0.16)' : 'rgba(239,83,80,0.18)')
+      : 'rgba(239,83,80,0.14)';
+
+  const TYPE_CHIP = [
+    { icon: '📄', bg: 'rgba(124,92,255,0.15)',  border: 'rgba(124,92,255,0.3)'  },
+    { icon: '🎵', bg: 'rgba(46,230,197,0.12)',  border: 'rgba(46,230,197,0.25)' },
+    { icon: '🏠', bg: 'rgba(245,182,92,0.12)',  border: 'rgba(245,182,92,0.25)' },
+  ] as const;
+  const chip = TYPE_CHIP[row.claim.claimType as 0 | 1 | 2] ?? { icon: '📄', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)' };
+
+  const pillStyle = localResolved
+    ? { background: 'rgba(46,230,197,0.12)',  color: '#2ee6c5', borderColor: 'rgba(46,230,197,0.3)'  }
+    : canExecute
+      ? (executeApprovedSide
+          ? { background: 'rgba(34,197,94,0.12)',  color: '#4ade80', borderColor: 'rgba(34,197,94,0.4)'  }
+          : { background: 'rgba(239,83,80,0.12)',   color: '#ef9090', borderColor: 'rgba(239,83,80,0.4)'  })
+      : { background: 'rgba(239,83,80,0.14)',       color: '#ef5350', borderColor: 'rgba(239,83,80,0.45)' };
+  const pillLabel = localResolved ? 'Resolved' : canExecute ? 'Ready to execute' : 'Disputed';
+
+  const cardMeta = canExecute
+    ? `Quorum reached · ${executeApprovedSide ? 'approve' : 'reject'}`
+    : `Originator ${row.claim.originator.slice(0, 6)}...${row.claim.originator.slice(-4)} · Investor ${row.funding.investor.slice(0, 6)}...${row.funding.investor.slice(-4)}`;
+
   return (
-    <div className="vf-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, color: 'var(--text-h)', fontFamily: 'var(--mono)', fontSize: '0.9rem' }}>
-            #{row.id.toString()}
+    <div
+      className="ap-dispute-card"
+      style={{ borderColor: cardBorderColor, boxShadow: `0 0 0 1px ${cardBorderColor}, 0 18px 32px -24px ${cardGlow}` }}
+    >
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <div className="ap-card-header">
+        <div className="ap-identity-block">
+          <span className="ap-icon-chip" style={{ background: chip.bg, border: `1px solid ${chip.border}` }}>
+            {chip.icon}
           </span>
-          <span className="vf-badge vf-badge-purple">{CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'}</span>
-          <span className={`vf-badge ${statusBadge(row.resolution)}`}>
-            {row.resolution.resolved ? 'Resolved' : 'Active Dispute'}
-          </span>
-        </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text)' }}>
-          Due {new Date(Number(row.claim.dueDate) * 1000).toLocaleDateString()}
-        </span>
-      </div>
-
-      <div className="vf-stats">
-        <div className="vf-stat">
-          <span className="vf-stat-label">Claim Amount</span>
-          <span className="vf-stat-value">{formatUnits(row.claim.amount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Funded Amount</span>
-          <span className="vf-stat-value">{formatUnits(row.funding.fundedAmount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Collateral Locked</span>
-          <span className="vf-stat-value">{row.collateral.locked ? 'Yes' : 'No'}</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Repayment Deposited</span>
-          <span className="vf-stat-value">{row.funding.repaymentDeposited ? 'Yes' : 'No'}</span>
-        </div>
-      </div>
-
-      <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-        Quorum: 2-of-3. Approvals: {localApprovals.toString()}/2 needed ({approvalsToQuorum.toString()} remaining). Rejections: {localRejections.toString()}/2 needed ({rejectionsToQuorum.toString()} remaining).
-      </div>
-
-      <div style={{ fontSize: '0.8rem', color: 'var(--text)', display: 'grid', gap: '0.25rem' }}>
-        <div>Investor: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-h)' }}>{row.funding.investor.slice(0, 10)}...{row.funding.investor.slice(-6)}</span></div>
-        <div>Originator: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-h)' }}>{row.claim.originator.slice(0, 10)}...{row.claim.originator.slice(-6)}</span></div>
-        <div>Dispute evidence: <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-h)' }}>{row.funding.disputeEvidenceHash}</span></div>
-      </div>
-
-      {isArbitrator ? (
-        <>
-          <div className={localHasVoted ? 'vf-alert vf-alert-yellow' : 'vf-alert vf-alert-info'} style={{ fontSize: '0.85rem' }}>
-            {localHasVoted === null
-              ? 'Checking your vote status...'
-              : localHasVoted
-                ? 'You have already voted on this claim.'
-                : 'You have not voted on this claim yet.'}
+          <div className="ap-copy-block">
+            <span className="ap-claim-name">
+              {CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'} #{row.id.toString()}
+            </span>
+            <span className="ap-card-meta">{cardMeta}</span>
           </div>
+        </div>
+        <span className="ap-status-pill" style={pillStyle}>{pillLabel}</span>
+      </div>
 
-          {localResolved ? (
-            <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-              This dispute has been resolved.
-            </div>
-          ) : (
-            <>
-              {localHasVoted === false && (
-                <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
-                  <button
-                    className="vf-btn vf-btn-primary"
-                    onClick={() => handleVote(true)}
-                    disabled={!canVote}
-                  >
-                    {actionState === 'voting-approve' ? 'Voting Approve...' : 'Vote Approve'}
-                  </button>
-                  <button
-                    className="vf-btn vf-btn-secondary"
-                    onClick={() => handleVote(false)}
-                    disabled={!canVote}
-                  >
-                    {actionState === 'voting-reject' ? 'Voting Reject...' : 'Vote Reject'}
-                  </button>
-                </div>
-              )}
-
-              {canExecute && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div className="vf-alert vf-alert-yellow" style={{ fontSize: '0.85rem' }}>
-                    Quorum reached on the {executeApprovedSide ? 'approve' : 'reject'} side. Execute resolution now.
-                  </div>
-                  <button
-                    className="vf-btn vf-btn-primary"
-                    onClick={() => handleResolve(executeApprovedSide)}
-                    disabled={actionState !== 'idle'}
-                  >
-                    {executeApprovedSide
-                      ? (actionState === 'executing-approve' ? 'Executing Approve Resolution...' : 'Execute Resolution (Approve)')
-                      : (actionState === 'executing-reject' ? 'Executing Reject Resolution...' : 'Execute Resolution (Reject)')}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      ) : (
-        <div className="vf-alert vf-alert-yellow" style={{ fontSize: '0.85rem' }}>
-          Connected wallet is not one of the 3 configured arbitrators. Resolve controls are hidden.
+      {/* ── Data grid (active disputes only) ──────────────────────── */}
+      {!canExecute && !localResolved && (
+        <div className="ap-data-grid">
+          <div className="ap-stat-block">
+            <span className="ap-stat-label">Claim value</span>
+            <span className="ap-stat-value">{formatAmt(row.claim.amount)} mUSD</span>
+          </div>
+          <div className="ap-stat-block">
+            <span className="ap-stat-label">Funded</span>
+            <span className="ap-stat-value">{formatAmt(row.funding.fundedAmount)} mUSD</span>
+          </div>
+          <div className="ap-stat-block">
+            <span className="ap-stat-label">Collateral at stake</span>
+            <span className="ap-stat-value">{formatAmt(row.collateral.amount)} mUSD</span>
+          </div>
         </div>
       )}
 
+      {/* ── Quorum module ─────────────────────────────────────────── */}
+      {!localResolved && (
+        <div className="ap-quorum-module">
+          <span className="ap-quorum-label">Quorum · 2 of 3 required</span>
+
+          <div className="ap-quorum-row">
+            <span className="ap-quorum-row-label" style={{ color: '#4ade80' }}>Approve</span>
+            <div className="ap-quorum-bar">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className={`ap-quorum-segment ${
+                    i < Number(localApprovals) ? 'ap-quorum-segment--approve' : 'ap-quorum-segment--empty'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="ap-quorum-tally">{localApprovals.toString()} / 2</span>
+          </div>
+
+          <div className="ap-quorum-row">
+            <span className="ap-quorum-row-label" style={{ color: '#ef9090' }}>Reject</span>
+            <div className="ap-quorum-bar">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className={`ap-quorum-segment ${
+                    i < Number(localRejections) ? 'ap-quorum-segment--reject' : 'ap-quorum-segment--empty'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="ap-quorum-tally">{localRejections.toString()} / 2</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Resolved banner ───────────────────────────────────────── */}
+      {localResolved && (
+        <div className="ap-resolved-banner">This dispute has been resolved.</div>
+      )}
+
+      {/* ── Vote / execute controls ───────────────────────────────── */}
+      {!localResolved && (
+        isArbitrator ? (
+          <>
+            {/* Already-voted label (shown when quorum not yet reached) */}
+            {localHasVoted === true && !canExecute && (
+              <span
+                className="ap-voted-label"
+                style={{
+                  color: localVotedDirection === true
+                    ? '#4ade80'
+                    : localVotedDirection === false
+                      ? '#ef9090'
+                      : 'var(--text)',
+                }}
+              >
+                {localVotedDirection === true
+                  ? 'You voted Approve'
+                  : localVotedDirection === false
+                    ? 'You voted Reject'
+                    : 'You have already voted on this claim.'}
+              </span>
+            )}
+
+            {/* Vote buttons — only before quorum, only if not yet voted */}
+            {canVote && !canExecute && (
+              <div className="ap-vote-row">
+                <button
+                  className="ap-vote-btn ap-vote-btn--approve"
+                  onClick={() => handleVote(true)}
+                  disabled={actionState !== 'idle'}
+                >
+                  {(actionState as string) === 'voting-approve' ? 'Voting…' : 'Vote approve'}
+                </button>
+                <button
+                  className="ap-vote-btn ap-vote-btn--reject"
+                  onClick={() => handleVote(false)}
+                  disabled={actionState !== 'idle'}
+                >
+                  {(actionState as string) === 'voting-reject' ? 'Voting…' : 'Vote reject'}
+                </button>
+              </div>
+            )}
+
+            {/* Execute button — prominent CTA once quorum reached */}
+            {canExecute && (
+              <button
+                className={`ap-execute-btn ${
+                  executeApprovedSide ? 'ap-execute-btn--approve' : 'ap-execute-btn--reject'
+                }`}
+                onClick={() => handleResolve(executeApprovedSide)}
+                disabled={actionState !== 'idle'}
+              >
+                {actionState === 'executing-approve' || actionState === 'executing-reject'
+                  ? 'Executing…'
+                  : executeApprovedSide
+                    ? 'Execute resolution · release funds'
+                    : 'Execute resolution · slash collateral'}
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="ap-warn-banner">
+            Connected wallet is not one of the 3 configured arbitrators. Resolve controls are hidden.
+          </div>
+        )
+      )}
+
+      {/* ── Tx feedback ───────────────────────────────────────────── */}
       {txHash && (
         <div className="vf-alert vf-alert-success">
           Tx submitted:{' '}
@@ -782,56 +862,38 @@ export default function ArbitratorPanel() {
 
   return (
     <div className="vf-page">
-      <h2>Arbitrator Panel</h2>
-      <p className="sub">Review active disputes, inspect quorum progress, and resolve claims once 2-of-3 consensus is reached.</p>
+      <div className="vf-dashboard-content">
+        <div>
+          <h2 style={{ margin: 0, fontFamily: 'var(--heading)', fontSize: '1.38rem', fontWeight: 700, color: 'var(--text-h)', letterSpacing: '-0.02em' }}>Arbitrator panel</h2>
+          <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', color: 'var(--text)' }}>Review disputed claims and cast your resolution vote.</p>
+        </div>
 
-      <div className="vf-card" style={{ gap: '0.5rem' }}>
-        <h3 style={{ margin: 0 }}>Configured Arbitrators</h3>
-        {ownersList.length === 0 ? (
-          <p style={{ margin: 0, color: 'var(--text)' }}>No arbitrator owners returned from chain.</p>
-        ) : (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '0.35rem' }}>
-            {ownersList.map((owner) => (
-              <li key={owner} style={{ fontFamily: 'var(--mono)', fontSize: '0.82rem', color: 'var(--text-h)' }}>
-                {owner}
-              </li>
-            ))}
-          </ul>
+        {isLoading && (
+          <div className="vf-alert vf-alert-info">Loading dispute state from chain...</div>
         )}
-        <div className={isArbitrator ? 'vf-alert vf-alert-success' : 'vf-alert vf-alert-yellow'} style={{ fontSize: '0.85rem' }}>
-          {isArbitrator
-            ? 'Connected wallet is an arbitrator. Resolve controls are enabled.'
-            : 'Connected wallet is not an arbitrator. Resolve controls are hidden.'}
-        </div>
-      </div>
 
-      {isLoading && (
-        <div className="vf-alert vf-alert-info">Loading dispute state from chain...</div>
-      )}
+        {decodeError && (
+          <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
+            Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+          </div>
+        )}
 
-      {decodeError && (
-        <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
-          Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
-        </div>
-      )}
-
-      {!isLoading && disputes.length === 0 && (
-        <div className="vf-card">
-          <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
+        {!isLoading && disputes.length === 0 && (
+          <p style={{ color: 'var(--text)', textAlign: 'center', padding: '2rem 0', margin: 0 }}>
             No active disputes at the moment.
           </p>
-        </div>
-      )}
+        )}
 
-      {disputes.map((row) => (
-        <DisputeCard
-          key={row.id.toString()}
-          row={row}
-          isArbitrator={isArbitrator}
-          hasVoted={parsedHasVoted.byClaimId.has(row.id.toString()) ? parsedHasVoted.byClaimId.get(row.id.toString())! : null}
-          onRefresh={refreshDisputeState}
-        />
-      ))}
+        {disputes.map((row) => (
+          <DisputeCard
+            key={row.id.toString()}
+            row={row}
+            isArbitrator={isArbitrator}
+            hasVoted={parsedHasVoted.byClaimId.has(row.id.toString()) ? parsedHasVoted.byClaimId.get(row.id.toString())! : null}
+            onRefresh={refreshDisputeState}
+          />
+        ))}
+      </div>
     </div>
   );
 }

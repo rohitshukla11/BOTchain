@@ -210,24 +210,65 @@ function toBytes32(input: string): `0x${string}` {
   return (`0x${hex.padEnd(64, '0')}`) as `0x${string}`;
 }
 
-function formatCountdown(secondsLeft: number): string {
-  if (secondsLeft <= 0) return '00:00:00';
-  const hours = Math.floor(secondsLeft / 3600);
-  const minutes = Math.floor((secondsLeft % 3600) / 60);
-  const seconds = secondsLeft % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+function getStatusTone(status: ClaimStatus) {
+  if (status === 'Disputed') {
+    return {
+      border: 'rgba(239, 83, 80, 0.9)',
+      glow: 'rgba(239, 83, 80, 0.28)',
+      pillBg: 'rgba(239, 83, 80, 0.14)',
+      pillColor: '#ef5350',
+      progress: 'linear-gradient(90deg, rgba(124,92,255,0.9), rgba(239,83,80,0.92))',
+      stripBg: 'rgba(239, 83, 80, 0.08)',
+      stripBorder: 'rgba(239, 83, 80, 0.22)',
+      stripColor: '#ef5350',
+      buttonColor: '#ef5350',
+    };
+  }
+
+  if (status === 'Evidence Submitted - Challenge Window Open') {
+    return {
+      border: 'rgba(245, 182, 92, 0.88)',
+      glow: 'rgba(245, 182, 92, 0.24)',
+      pillBg: 'rgba(245, 182, 92, 0.16)',
+      pillColor: '#f5b65c',
+      progress: 'linear-gradient(90deg, rgba(124,92,255,0.9), rgba(245,182,92,0.88))',
+      stripBg: 'rgba(245, 182, 92, 0.08)',
+      stripBorder: 'rgba(245, 182, 92, 0.22)',
+      stripColor: '#f5b65c',
+      buttonColor: '#ef5350',
+    };
+  }
+
+  return {
+    border: 'rgba(124, 92, 255, 0.92)',
+    glow: 'rgba(124, 92, 255, 0.2)',
+    pillBg: 'rgba(124, 92, 255, 0.18)',
+    pillColor: '#c4b0ff',
+    progress: 'linear-gradient(90deg, rgba(124,92,255,0.9), rgba(56,189,248,0.85))',
+    stripBg: 'rgba(124, 92, 255, 0.08)',
+    stripBorder: 'rgba(124, 92, 255, 0.2)',
+    stripColor: '#f5b65c',
+    buttonColor: '#ef5350',
+  };
 }
 
-function statusBadgeClass(status: ClaimStatus): string {
-  if (status === 'Awaiting Collateral') return 'vf-badge-yellow';
-  if (status === 'Open for Funding') return 'vf-badge-green';
-  if (status === 'Funded - Repayment Due') return 'vf-badge-purple';
-  if (status === 'Evidence Submitted - Challenge Window Open') return 'vf-badge-yellow';
-  if (status === 'Disputed') return 'vf-badge-red';
-  return 'vf-badge-green';
+function getLifecycleProgress(status: ClaimStatus): number {
+  if (status === 'Disputed') return 72;
+  if (status === 'Evidence Submitted - Challenge Window Open') return 66;
+  if (status === 'Funded - Repayment Due') return 52;
+  if (status === 'Open for Funding') return 28;
+  if (status === 'Awaiting Collateral') return 18;
+  return 100;
 }
 
-function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWindow: bigint }) {
+function formatShortAmount(value: bigint): string {
+  const num = Number(formatUnits(value, 18));
+  if (num >= 100) return num.toFixed(0);
+  if (num >= 10) return num.toFixed(1);
+  return num.toFixed(2);
+}
+
+function PositionCard({ row }: { row: PositionRow; challengeWindow?: bigint }) {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
@@ -242,7 +283,7 @@ function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWin
     return () => clearInterval(intervalId);
   }, []);
 
-  const dueDateText = new Date(Number(row.claim.dueDate) * 1000).toLocaleDateString();
+  const dueDateText = new Date(Number(row.claim.dueDate) * 1000).toLocaleDateString(); void dueDateText;
   const challengeEndSec = Number(row.challengeEndsAt);
   const countdownSec = Math.max(0, challengeEndSec - nowSec);
   const challengeWindowActive = countdownSec > 0;
@@ -281,41 +322,83 @@ function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWin
     }
   }
 
+  const statusTone = getStatusTone(row.status);
+  const lifecycleProgress = getLifecycleProgress(row.status);
+
+  if (row.status === 'Repaid & Closed') {
+    const fundedText = formatShortAmount(row.funding.fundedAmount);
+    const repaidText = formatShortAmount(row.expectedRepayment);
+
+    return (
+      <div className="mp-closed-row">
+        <div className="mp-identity-block">
+          <span className="mp-icon-chip mp-icon-chip--closed">📄</span>
+          <div className="mp-copy-block">
+            <div className="mp-title-row">
+              <span className="mp-title-text">{CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'} #{row.id.toString()}</span>
+            </div>
+            <div className="mp-subtext">Originator {row.claim.originator.slice(0, 6)}...{row.claim.originator.slice(-4)}</div>
+          </div>
+        </div>
+
+        <div className="mp-closed-metric">
+          <span className="mp-closed-amount">{fundedText} → {repaidText} mUSD</span>
+        </div>
+
+        <span className="mp-pill mp-pill--closed">Repaid &amp; closed</span>
+      </div>
+    );
+  }
+
+  const cardStyle = {
+    borderColor: statusTone.border,
+    boxShadow: `0 0 0 1px ${statusTone.border}, 0 18px 32px -24px ${statusTone.glow}`,
+  } as const;
+
   return (
-    <div className="vf-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, color: 'var(--text-h)', fontFamily: 'var(--mono)', fontSize: '0.9rem' }}>#{row.id.toString()}</span>
-          <span className="vf-badge vf-badge-purple">{CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'}</span>
-          <span className={`vf-badge ${statusBadgeClass(row.status)}`}>{row.status}</span>
+    <div className="mp-position-card" style={cardStyle}>
+      <div className="mp-card-header">
+        <div className="mp-identity-block">
+          <span className="mp-icon-chip">📄</span>
+          <div className="mp-copy-block">
+            <div className="mp-title-row">
+              <span className="mp-title-text">{CLAIM_TYPE_LABELS[row.claim.claimType] ?? 'Unknown'} #{row.id.toString()}</span>
+            </div>
+            <div className="mp-subtext">Originator {row.claim.originator.slice(0, 6)}...{row.claim.originator.slice(-4)}</div>
+          </div>
         </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text)' }}>Due {dueDateText}</span>
+
+        <span className="mp-pill" style={{ background: statusTone.pillBg, color: statusTone.pillColor, borderColor: statusTone.border }}>{row.status}</span>
       </div>
 
-      <div className="vf-stats">
-        <div className="vf-stat">
-          <span className="vf-stat-label">Funded Amount</span>
-          <span className="vf-stat-value">{formatUnits(row.funding.fundedAmount, 18)} mUSD</span>
+      <div className="mp-grid">
+        <div className="mp-stat-block">
+          <span className="mp-stat-label">Funded</span>
+          <span className="mp-stat-value">{formatShortAmount(row.funding.fundedAmount)} mUSD</span>
         </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Expected Repayment</span>
-          <span className="vf-stat-value">{formatUnits(row.expectedRepayment, 18)} mUSD</span>
+        <div className="mp-stat-block">
+          <span className="mp-stat-label">Expected repayment</span>
+          <span className="mp-stat-value mp-stat-value--teal">{formatShortAmount(row.expectedRepayment)} mUSD</span>
         </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Principal + Yield</span>
-          <span className="vf-stat-value">{formatUnits(row.funding.fundedAmount, 18)} + {formatUnits(row.yieldAmount, 18)} mUSD</span>
-        </div>
-        <div className="vf-stat">
-          <span className="vf-stat-label">Originator</span>
-          <span className="vf-stat-value" style={{ fontFamily: 'var(--mono)', fontSize: '0.75rem' }}>{row.claim.originator.slice(0, 10)}…{row.claim.originator.slice(-6)}</span>
+        <div className="mp-stat-block">
+          <span className="mp-stat-label">Principal + yield</span>
+          <span className="mp-stat-value">{formatShortAmount(row.funding.fundedAmount)} + {formatShortAmount(row.yieldAmount)}</span>
         </div>
       </div>
 
-      {row.funding.evidenced && (
-        <div className="vf-alert vf-alert-info" style={{ fontSize: '0.85rem' }}>
-          Challenge window length: {Number(challengeWindow)}s. {challengeWindowActive
-            ? `Time remaining: ${formatCountdown(countdownSec)}`
-            : 'Challenge window elapsed.'}
+      {canRaiseDispute && (
+        <div className="mp-challenge-strip" style={{ background: statusTone.stripBg, borderColor: statusTone.stripBorder }}>
+          <span className="mp-challenge-copy" style={{ color: statusTone.stripColor }}>
+            Challenge window: {countdownSec}s remaining
+          </span>
+          <button
+            className="mp-ghost-button"
+            style={{ color: statusTone.buttonColor, borderColor: statusTone.buttonColor }}
+            onClick={handleRaiseDispute}
+            disabled={actionState !== 'idle'}
+          >
+            Raise dispute
+          </button>
         </div>
       )}
 
@@ -341,12 +424,6 @@ function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWin
         </div>
       )}
 
-      {row.status === 'Repaid & Closed' && (
-        <div className="vf-alert vf-alert-success" style={{ fontSize: '0.85rem' }}>
-          This position is settled and closed.
-        </div>
-      )}
-
       {txHash && (
         <div className="vf-alert vf-alert-success">
           Tx submitted:{' '}
@@ -361,6 +438,16 @@ function PositionCard({ row, challengeWindow }: { row: PositionRow; challengeWin
       )}
 
       {error && <div className="vf-alert vf-alert-error" style={{ fontSize: '0.8rem', wordBreak: 'break-word' }}>{error}</div>}
+
+      <div className="mp-progress-bar" aria-hidden="true">
+        <div
+          className="mp-progress-fill"
+          style={{
+            width: `${lifecycleProgress}%`,
+            background: statusTone.progress,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -566,30 +653,36 @@ export default function MyPositions() {
 
   return (
     <div className="vf-page">
-      <h2>My Positions</h2>
-      <p className="sub">Track funded claims, expected repayment, settlement progress, and disputes from the investor side.</p>
+      <div className="vf-dashboard-content">
+        <h2>My positions</h2>
+        <p className="sub">Track funded claims, expected repayment and disputes.</p>
 
-      {isLoading && (
-        <div className="vf-alert vf-alert-info">Loading investor positions from chain...</div>
-      )}
+        {isLoading && (
+          <div className="vf-alert vf-alert-info">Loading investor positions from chain...</div>
+        )}
 
-      {decodeError && (
-        <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
-          Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
-        </div>
-      )}
+        {decodeError && (
+          <div className="vf-alert vf-alert-error" style={{ fontSize: '0.85rem', wordBreak: 'break-word' }}>
+            Decode warning on claim #{decodeError.claimId} ({decodeError.source}): {decodeError.message}. Check console for raw payload.
+          </div>
+        )}
 
-      {!isLoading && positions.length === 0 && (
-        <div className="vf-card">
-          <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
-            You do not have any funded positions yet.
-          </p>
-        </div>
-      )}
+        {!isLoading && positions.length === 0 && (
+          <div className="vf-card">
+            <p style={{ margin: 0, color: 'var(--text)', textAlign: 'center', padding: '1rem 0' }}>
+              You do not have any funded positions yet.
+            </p>
+          </div>
+        )}
 
-      {positions.map((row) => (
-        <PositionCard key={row.id.toString()} row={row} challengeWindow={challengeWindow} />
-      ))}
+        {!isLoading && positions.length > 0 && (
+          <div className="mp-list">
+            {positions.map((row) => (
+              <PositionCard key={row.id.toString()} row={row} challengeWindow={challengeWindow} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
