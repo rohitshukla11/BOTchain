@@ -18,10 +18,15 @@ const TESTNET: AddressBook = {
   VeriflowClaimNFT: '0xc4e7dD84165a5247637E106f4Bbe9520876D05b3',
 };
 
-// BOT Chain Mainnet (677) — NOT YET DEPLOYED.
-// Populate from deployments/677.json after running scripts/deploy.ts, then set
-// `activeChain = botchainMainnet` in ./chains.ts.
-const MAINNET: AddressBook | null = null;
+// BOT Chain Mainnet (677) — deployed 2026-08-22, see deployments/677.json.
+// Allowlisted originators: deployer 0x68343Aa0…, 0x150C659d…
+const MAINNET: AddressBook | null = {
+  MockStablecoin: '0x680A55c0Db4B44def9d88cCBF450C1f5dd37fd9a',
+  RiskOracle: '0x87934d5E1A61be3Bb06FE54AC7e21E7704731d1C',
+  ArbitratorMultisig: '0xE33Dc788C060cb77F79A2AFF96Ca685f6C018721',
+  VeriflowClaimVault: '0x38703a57c5f8eB2F8d1576A3d2B4B35A10D66FA6',
+  VeriflowClaimNFT: '0x8a747D78811066F58A0dDe04E82165A02fA37725',
+};
 
 const BY_CHAIN: Record<number, AddressBook | null> = {
   [botchainTestnet.id]: TESTNET,

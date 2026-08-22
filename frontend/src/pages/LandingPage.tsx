@@ -34,7 +34,7 @@ export default function LandingPage({ onLaunch }: LandingPageProps) {
       <section className="vf-landing-hero">
         <span className="vf-landing-badge">
           <span className="vf-landing-badge-dot" aria-hidden="true" />
-          Live on BOT Chain testnet
+          Live on BOT Chain mainnet
         </span>
         <h1>Unlock capital from what<br />you're already owed</h1>
         <p className="vf-landing-summary">
