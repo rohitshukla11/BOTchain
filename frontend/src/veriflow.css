@@ -25,6 +25,10 @@
   flex-shrink: 0;
 }
 
+.vf-header.vf-header-landing {
+  grid-template-columns: 1fr auto;
+}
+
 /* Right-align the last header child (wallet / launch-app button) */
 .vf-header > :last-child {
   justify-self: end;

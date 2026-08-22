@@ -1,0 +1,98 @@
+{
+  "chainId": 677,
+  "deployer": "0x68343Aa0598b7FCAA102769D172e59cdDfae10f2",
+  "addresses": {
+    "MockStablecoin": "0x680A55c0Db4B44def9d88cCBF450C1f5dd37fd9a",
+    "RiskOracle": "0x87934d5E1A61be3Bb06FE54AC7e21E7704731d1C",
+    "ArbitratorMultisig": "0xE33Dc788C060cb77F79A2AFF96Ca685f6C018721",
+    "VeriflowClaimVault": "0x38703a57c5f8eB2F8d1576A3d2B4B35A10D66FA6",
+    "VeriflowClaimNFT": "0x8a747D78811066F58A0dDe04E82165A02fA37725"
+  },
+  "transactions": [
+    {
+      "step": "MockStablecoin",
+      "hash": "0x6d6fc5c254629eab04d0155c4912a2b5989dc811f11b659e89d12c9921a5c931",
+      "block": 20566286
+    },
+    {
+      "step": "RiskOracle",
+      "hash": "0x5d0caac7a1eedc97fa4a492baf10bea04e4927c6022c214f1af69f13b000fe61",
+      "block": 20566289
+    },
+    {
+      "step": "ArbitratorMultisig",
+      "hash": "0xc44d259fe1874087c97f26badeb5224b5f3d5a89db9f50f133153a10cda7048e",
+      "block": 20566292
+    },
+    {
+      "step": "VeriflowClaimVault",
+      "hash": "0xbc6bb4650547eab4634ca17c37bbd570c8ec077e0bae990399d814a10cad4da8",
+      "block": 20566297
+    },
+    {
+      "step": "VeriflowClaimNFT",
+      "hash": "0xe3a0c326eabd8f8b37aef1da6fdd7fb1a3d8ded17a9a2afa1d7247fa90c674a8",
+      "block": 20566303
+    },
+    {
+      "step": "nft.setArbitrator",
+      "hash": "0xff1e13743ee0c81a7b9325f8227256d01a3b0eb18633b252faf1ae45e788df08",
+      "block": 20566308
+    },
+    {
+      "step": "nft.setVault",
+      "hash": "0x6c30dbdc42a12d18243a036ce29182a7413b1db05b567ad1aa4d2a5717fbd7fd",
+      "block": 20566310
+    },
+    {
+      "step": "vault.setArbitrator",
+      "hash": "0x35014aa993e87d9fdad9554784f0a0e0dc4d5d44dc79c597de5f3df6f435e0e3",
+      "block": 20566313
+    },
+    {
+      "step": "vault.setClaimNFT",
+      "hash": "0x3a9879ec7b6adb60922b29198763d52f141461499815b62cf5b5e95f403526ee",
+      "block": 20566316
+    },
+    {
+      "step": "vault.setRiskOracle",
+      "hash": "0x0f93f23c15b9815379398ece948985ceea9148e692e06c5ab0df4f770f4e8460",
+      "block": 20566319
+    },
+    {
+      "step": "multisig.setClaimNFT",
+      "hash": "0x421101511b29bef09d69807383bec937e378ac52c0d4a007dfbd3a20343e78e9",
+      "block": 20566321
+    },
+    {
+      "step": "multisig.setClaimVault",
+      "hash": "0x1907452835deb15070ef064ede5030e83e31dabf8eb6e1f32696590ee989fdc3",
+      "block": 20566323
+    },
+    {
+      "step": "allowlist 0x68343Aa0…",
+      "hash": "0x36f06271f6a159b6626f55aa5b16cf3e74b4797789e8375911109a9ba9063154",
+      "block": 20566325
+    },
+    {
+      "step": "allowlist 0x150C659d…",
+      "hash": "0x9cf53ccfa93ca3be11ad8d85b185940dd6539ea2fdff6831f54feacdce355845",
+      "block": 20566327
+    },
+    {
+      "step": "mint mUSD 0x68343Aa0…",
+      "hash": "0xc16dd2d04e43400d42ab85019eb9b80d9a74110d740441712cf40db1a8864db2",
+      "block": 20566330
+    },
+    {
+      "step": "mint mUSD 0x150C659d…",
+      "hash": "0xa0af3b73a912eff851b8750a0918167a7d73a7e4444e44841bb922b3a1d35ed1",
+      "block": 20566333
+    },
+    {
+      "step": "mint mUSD 0x48D8f72D…",
+      "hash": "0x65831e2f52028a7eb484d4bb1dbf4d7ed48d08c0bcf618b008405599b1796475",
+      "block": 20566335
+    }
+  ]
+}

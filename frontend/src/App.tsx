@@ -46,7 +46,7 @@ export default function App() {
 
   return (
     <div className="vf-shell">
-      <header className="vf-header">
+      <header className={`vf-header${view === 'landing' ? ' vf-header-landing' : ''}`}>
         <div className="vf-brand">
           <span className="vf-logo-mark" aria-hidden="true" />
           <span className="vf-logo">Cred<span>Fi</span></span>
@@ -72,13 +72,7 @@ export default function App() {
               </button>
             )}
           </nav>
-        ) : (
-          <nav className="vf-landing-nav" aria-label="Site navigation">
-            <a href="#" className="vf-landing-nav-link">Product</a>
-            <a href="#how" className="vf-landing-nav-link">How it works</a>
-            <a href="#" className="vf-landing-nav-link">Docs</a>
-          </nav>
-        )}
+        ) : null}
 
         {view === 'app' ? <ConnectWallet /> : (
           <button className="vf-btn vf-btn-primary" onClick={() => setView('app')}>Launch app</button>

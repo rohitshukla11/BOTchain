@@ -1,8 +1,11 @@
 import { defineConfig } from "hardhat/config";
 import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 
-const BOTCHAIN_MAINNET_RPC = process.env.RPC_URL ?? "https://rpc.botchain.ai";
-const BOTCHAIN_TESTNET_RPC = "https://rpc.bohr.life";
+// Per-network RPC overrides. Deliberately NOT a shared `RPC_URL`: a single
+// variable pointed one network's URL at the other's chainId and every request
+// failed the chain-ID check.
+const BOTCHAIN_MAINNET_RPC = process.env.BOTCHAIN_MAINNET_RPC_URL ?? "https://rpc.botchain.ai";
+const BOTCHAIN_TESTNET_RPC = process.env.BOTCHAIN_TESTNET_RPC_URL ?? "https://rpc.bohr.life";
 const PRIVATE_KEY = process.env.PRIVATE_KEY ?? "0x1111111111111111111111111111111111111111111111111111111111111111";
 
 export default defineConfig({
@@ -54,12 +57,22 @@ export default defineConfig({
           url: "https://scan.botchain.ai",
           apiUrl: "https://scan.botchain.ai/api",
         },
+        blockscout: {
+          name: "BOTScan",
+          url: "https://scan.botchain.ai",
+          apiUrl: "https://scan.botchain.ai/api",
+        },
       },
     },
     968: {
       name: "BOT Chain Testnet",
       blockExplorers: {
         etherscan: {
+          name: "BOTScan Testnet",
+          url: "https://scan.bohr.life",
+          apiUrl: "https://scan.bohr.life/api",
+        },
+        blockscout: {
           name: "BOTScan Testnet",
           url: "https://scan.bohr.life",
           apiUrl: "https://scan.bohr.life/api",
